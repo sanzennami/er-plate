@@ -1,8 +1,16 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.1.1';
+  const APP_VERSION = '1.1.2';
   const FALLBACK_CHANGELOG = [
+    {
+      version: '1.1.2',
+      date: '2026-11-25',
+      items: [
+        '新增「✦ 生成搭配图」一键分享功能：支持将当前角色铭牌或队伍大厅合成为带缩略图与官方中文名称清单（实验体/皮肤、铭牌边框、背景板、玩家头像、字体及潜能参数）的高清搭配分享卡',
+        '搭配分享图弹窗支持「清爽白卡 / 深邃黑卡」双底色实时切换，并支持一键复制分享图到 QQ/微信剪贴板或下载 PNG',
+      ],
+    },
     {
       version: '1.1.1',
       date: '2026-11-25',
@@ -1616,6 +1624,614 @@
     }
   }
 
+  // ==================== 一键生成铭牌搭配分享图（含缩略图与装扮名称清单） ====================
+  const TRAIT_LABELS = {
+    havoc: '破坏红',
+    chaos: '混沌紫',
+    fort: '抵抗蓝',
+    support: '支援绿',
+  };
+
+  function roundRectPath(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') {
+      ctx.roundRect(x, y, w, h, r);
+    } else {
+      ctx.rect(x, y, w, h);
+    }
+  }
+
+  function fontDisplayLabel(fontKey, customFont) {
+    if (fontKey === 'custom') {
+      const cleaned = String(customFont || '').trim();
+      return cleaned ? `本机字体（${cleaned}）` : '默认雅黑';
+    }
+    const hit = FONT_PRESETS.find((f) => f.key === fontKey);
+    return hit ? hit.label.replace(/（.+?）$/, '') : '默认雅黑';
+  }
+
+  function prettyItemName(file, fallback = '未选择') {
+    if (!file) return fallback;
+    const zh = rawZhLabel(file);
+    return (zh || stripExt(file) || fallback).trim();
+  }
+
+  function drawClippedThumb(ctx, img, x, y, w, h, r, fitMode = 'cover', backing = '#141b24', strokeColor = 'rgba(148,163,184,0.28)') {
+    ctx.save();
+    roundRectPath(ctx, x, y, w, h, r);
+    ctx.fillStyle = backing;
+    ctx.fill();
+    ctx.clip();
+    if (img && img.naturalWidth && img.naturalHeight) {
+      if (fitMode === 'contain') {
+        drawContain(ctx, img, x + 4, y + 4, w - 8, h - 8);
+      } else if (fitMode === 'teamBg') {
+        const sx = img.naturalWidth * (8 / 322);
+        const sW = img.naturalWidth * (282 / 322);
+        const sH = img.naturalHeight * (643 / 684);
+        const scale = Math.max(w / sW, h / sH);
+        const dw = sW * scale;
+        const dh = sH * scale;
+        ctx.drawImage(img, sx, 0, sW, sH, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+      } else {
+        drawCover(ctx, img, x, y, w, h);
+      }
+    }
+    ctx.restore();
+    ctx.save();
+    roundRectPath(ctx, x, y, w, h, r);
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawFitSingleLine(ctx, text, x, y, maxW, basePx, minPx, weight, family, color, align = 'left') {
+    const str = String(text || '');
+    ctx.save();
+    ctx.textAlign = align;
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = color;
+    let px = basePx;
+    ctx.font = `${weight} ${px}px ${family}`;
+    while (px > minPx && ctx.measureText(str).width > maxW) {
+      px -= 0.5;
+      ctx.font = `${weight} ${px}px ${family}`;
+    }
+    let out = str;
+    if (ctx.measureText(out).width > maxW) {
+      while (out.length > 1 && ctx.measureText(`${out}…`).width > maxW) {
+        out = out.slice(0, -1);
+      }
+      out = `${out}…`;
+    }
+    ctx.fillText(out, x, y);
+    ctx.restore();
+  }
+
+  function drawWrappedLines(ctx, text, x, y, maxW, lineH, maxLines, weight, px, family, color) {
+    const chars = Array.from(String(text || ''));
+    ctx.save();
+    ctx.font = `${weight} ${px}px ${family}`;
+    ctx.fillStyle = color;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    const lines = [];
+    let cur = '';
+    for (let i = 0; i < chars.length; i += 1) {
+      const next = cur + chars[i];
+      if (ctx.measureText(next).width > maxW && cur.length > 0) {
+        lines.push(cur);
+        cur = chars[i];
+        if (lines.length >= maxLines) break;
+      } else {
+        cur = next;
+      }
+    }
+    if (lines.length < maxLines && cur) {
+      lines.push(cur);
+    } else if (lines.length === maxLines && cur) {
+      let last = lines[maxLines - 1];
+      while (last.length > 1 && ctx.measureText(`${last}…`).width > maxW) {
+        last = last.slice(0, -1);
+      }
+      lines[maxLines - 1] = `${last}…`;
+    }
+    lines.forEach((ln, idx) => {
+      ctx.fillText(ln, x, y + idx * lineH);
+    });
+    ctx.restore();
+  }
+
+  function sharePalette(cardTheme) {
+    if (cardTheme === 'dark') {
+      return {
+        bgTop: '#0d131c',
+        bgBot: '#131c28',
+        glow: 'rgba(20, 184, 166, 0.16)',
+        stageFill: 'rgba(255, 255, 255, 0.03)',
+        stageStroke: 'rgba(148, 163, 184, 0.14)',
+        cardFill: 'rgba(24, 34, 48, 0.88)',
+        cardStroke: 'rgba(148, 163, 184, 0.16)',
+        pillFill: 'rgba(20, 184, 166, 0.16)',
+        pillText: '#2dd4bf',
+        stripFill: 'rgba(15, 23, 34, 0.78)',
+        title: '#f8fafc',
+        sub: '#94a3b8',
+        dim: '#64748b',
+        accent: '#2dd4bf',
+        thumbBack: '#0b1017',
+        thumbStroke: 'rgba(148, 163, 184, 0.28)',
+      };
+    }
+    return {
+      bgTop: '#f6f9fc',
+      bgBot: '#eaf0f7',
+      glow: 'rgba(13, 148, 136, 0.12)',
+      stageFill: 'rgba(255, 255, 255, 0.72)',
+      stageStroke: 'rgba(15, 23, 42, 0.08)',
+      cardFill: '#ffffff',
+      cardStroke: 'rgba(15, 23, 42, 0.08)',
+      pillFill: 'rgba(13, 148, 136, 0.11)',
+      pillText: '#0f766e',
+      stripFill: 'rgba(255, 255, 255, 0.82)',
+      title: '#0f172a',
+      sub: '#475569',
+      dim: '#64748b',
+      accent: '#0d9488',
+      thumbBack: '#161f2c',
+      thumbStroke: 'rgba(15, 23, 42, 0.12)',
+    };
+  }
+
+  async function buildShareCardCanvas(cardTheme = state.theme) {
+    const plateCanvas = await buildExportCanvas();
+    if (!plateCanvas) return null;
+
+    const uiFont = '"Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
+    const pal = sharePalette(cardTheme);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    if (state.mode === 'role') {
+      const W = 1360;
+      const H = 860;
+      canvas.width = W;
+      canvas.height = H;
+
+      // 背景渐变 + 柔和光晕 + 细网格装饰
+      const bgGrad = ctx.createLinearGradient(0, 0, W, H);
+      bgGrad.addColorStop(0, pal.bgTop);
+      bgGrad.addColorStop(1, pal.bgBot);
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      const radGlow = ctx.createRadialGradient(275, 420, 30, 275, 420, 360);
+      radGlow.addColorStop(0, pal.glow);
+      radGlow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = radGlow;
+      ctx.fillRect(0, 0, 620, H);
+
+      // 左侧成品展示台背板
+      ctx.save();
+      roundRectPath(ctx, 48, 46, 454, 768, 22);
+      ctx.fillStyle = pal.stageFill;
+      ctx.fill();
+      ctx.strokeStyle = pal.stageStroke;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+
+      // 绘制左侧 1:1 成品角色铭牌
+      ctx.save();
+      ctx.shadowColor = cardTheme === 'dark' ? 'rgba(0,0,0,0.62)' : 'rgba(15,23,42,0.24)';
+      ctx.shadowBlur = 32;
+      ctx.shadowOffsetY = 12;
+      drawContain(ctx, plateCanvas, 74, 72, 402, 716);
+      ctx.restore();
+
+      // 加载右侧清单缩略图
+      const r = state.role;
+      const [charThumb, borderThumb, bgThumb, avThumb] = await Promise.all([
+        loadImg(assetPath(FOLDERS.characterPortraits, r.character)),
+        loadImg(assetPath(FOLDERS.borders, r.border)),
+        loadImg(assetPath(FOLDERS.characterBackgrounds, r.background)),
+        loadImg(assetPath(FOLDERS.avatars, r.avatar)),
+      ]);
+
+      const rx = 536;
+      const rw = 776;
+      const charZh = characterDisplayName(r.characterKey) || '未知实验体';
+      const skinPure = isDefaultSkinFile(r.skin)
+        ? '默认原皮'
+        : cleanDisplayLabel(r.skin, 'skin') || charZh;
+      const variantLabel = r.variant === 'full' ? '全身立绘' : '半身立绘';
+      const fontLabel = fontDisplayLabel(r.fontKey, r.customFont);
+
+      // 顶部标签胶囊
+      ctx.save();
+      roundRectPath(ctx, rx, 52, 232, 32, 8);
+      ctx.fillStyle = pal.pillFill;
+      ctx.fill();
+      ctx.font = `800 14px ${uiFont}`;
+      ctx.fillStyle = pal.pillText;
+      ctx.textBaseline = 'middle';
+      ctx.fillText('永恒轮回 · 角色铭牌搭配单', rx + 14, 68);
+      ctx.restore();
+
+      // 主标题 & 副信息
+      drawFitSingleLine(
+        ctx,
+        `${charZh} · ${skinPure}（${variantLabel}）`,
+        rx,
+        118,
+        rw,
+        32,
+        20,
+        800,
+        uiFont,
+        pal.title
+      );
+      drawFitSingleLine(
+        ctx,
+        `玩家昵称：${r.playerName || '—'}   ｜   铭牌头衔：${r.skinLabel || charZh}   ｜   字体：${fontLabel}`,
+        rx,
+        156,
+        rw,
+        16.5,
+        13,
+        600,
+        uiFont,
+        pal.sub
+      );
+
+      // 四大装扮条目卡片
+      const items = [
+        {
+          tag: '实验体与立绘皮肤',
+          name: `${charZh} — ${skinPure}`,
+          desc: `模式：${variantLabel}`,
+          img: charThumb,
+          fit: 'cover',
+        },
+        {
+          tag: '铭牌边框',
+          name: prettyItemName(r.border, '默认无边框'),
+          desc: '加载界面外框装饰',
+          img: borderThumb,
+          fit: 'contain',
+        },
+        {
+          tag: '人物背景板',
+          name: prettyItemName(r.background, '默认底板'),
+          desc: '加载界面角色底图',
+          img: bgThumb,
+          fit: 'cover',
+        },
+        {
+          tag: '左下玩家头像',
+          name: prettyItemName(r.avatar, '未选择头像'),
+          desc: '铭牌左下角佩戴头像',
+          img: avThumb,
+          fit: 'cover',
+        },
+      ];
+
+      items.forEach((it, idx) => {
+        const cy = 186 + idx * 120;
+        const ch = 106;
+        ctx.save();
+        ctx.shadowColor = cardTheme === 'dark' ? 'rgba(0,0,0,0.25)' : 'rgba(15,23,42,0.05)';
+        ctx.shadowBlur = 12;
+        ctx.shadowOffsetY = 3;
+        roundRectPath(ctx, rx, cy, rw, ch, 14);
+        ctx.fillStyle = pal.cardFill;
+        ctx.fill();
+        ctx.restore();
+
+        ctx.save();
+        roundRectPath(ctx, rx, cy, rw, ch, 14);
+        ctx.strokeStyle = pal.cardStroke;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.restore();
+
+        drawClippedThumb(ctx, it.img, rx + 14, cy + 12, 82, 82, 10, it.fit, pal.thumbBack, pal.thumbStroke);
+
+        ctx.save();
+        ctx.font = `800 13.5px ${uiFont}`;
+        ctx.fillStyle = pal.accent;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(it.tag, rx + 114, cy + 30);
+        ctx.restore();
+
+        drawFitSingleLine(ctx, it.name, rx + 114, cy + 60, rw - 134, 23, 15, 800, uiFont, pal.title);
+        drawFitSingleLine(ctx, it.desc, rx + 114, cy + 86, rw - 134, 13.5, 12, 600, uiFont, pal.dim);
+      });
+
+      // 底部细节参数条
+      const tf = currentArtTransform();
+      const tfMoved = tf.x !== 0 || tf.y !== 0 || tf.scale !== 100;
+      const tfDesc = tfMoved
+        ? `缩放 ${tf.scale}% · X ${fmtSigned(tf.x)} · Y ${fmtSigned(tf.y)}`
+        : '默认校准原点';
+      const badgeDesc = r.showBadges
+        ? `${TRAIT_LABELS[r.primaryTrait] || '破坏红'} + ${TRAIT_LABELS[r.subTrait] || '混沌紫'}`
+        : '隐藏';
+
+      ctx.save();
+      roundRectPath(ctx, rx, 674, rw, 52, 12);
+      ctx.fillStyle = pal.stripFill;
+      ctx.fill();
+      ctx.strokeStyle = pal.cardStroke;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+
+      drawFitSingleLine(
+        ctx,
+        `潜能图标：${badgeDesc}   ｜   立绘坐标：${tfDesc}   ｜   字号：昵称 ${r.nameFontSize}px · 头衔 ${r.skinFontSize}px`,
+        rx + 18,
+        700,
+        rw - 36,
+        14.5,
+        12,
+        600,
+        uiFont,
+        pal.sub
+      );
+
+      // 底部品牌水印栏
+      ctx.save();
+      ctx.strokeStyle = pal.cardStroke;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(rx, 756);
+      ctx.lineTo(rx + rw, 756);
+      ctx.stroke();
+
+      ctx.font = `800 16px ${uiFont}`;
+      ctx.fillStyle = pal.title;
+      ctx.textBaseline = 'middle';
+      ctx.fillText('卢米亚铭牌工坊', rx, 788);
+
+      ctx.font = `600 14px ${uiFont}`;
+      ctx.fillStyle = pal.dim;
+      ctx.fillText('· 永恒轮回铭牌与大厅搭配工具', rx + 122, 788);
+
+      ctx.textAlign = 'right';
+      ctx.font = `700 15px ${uiFont}`;
+      ctx.fillStyle = pal.accent;
+      ctx.fillText('er-plate.pages.dev', rx + rw, 788);
+      ctx.restore();
+    } else {
+      // 队伍大厅搭配分享图
+      const slots = state.teamSlots.filter((s) => s.enabled);
+      const W = 1400;
+      const H = 1080;
+      canvas.width = W;
+      canvas.height = H;
+
+      const bgGrad = ctx.createLinearGradient(0, 0, W, H);
+      bgGrad.addColorStop(0, pal.bgTop);
+      bgGrad.addColorStop(1, pal.bgBot);
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      const radGlow = ctx.createRadialGradient(W / 2, 390, 40, W / 2, 390, 520);
+      radGlow.addColorStop(0, pal.glow);
+      radGlow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = radGlow;
+      ctx.fillRect(0, 0, W, 720);
+
+      const padX = 56;
+      const contentW = W - padX * 2;
+      const teamFontLabel = fontDisplayLabel(state.teamFontKey, state.teamCustomFont);
+
+      // 顶部标题栏
+      ctx.save();
+      roundRectPath(ctx, padX, 42, 236, 30, 8);
+      ctx.fillStyle = pal.pillFill;
+      ctx.fill();
+      ctx.font = `800 13.5px ${uiFont}`;
+      ctx.fillStyle = pal.pillText;
+      ctx.textBaseline = 'middle';
+      ctx.fillText('永恒轮回 · 队伍大厅搭配单', padX + 14, 57);
+      ctx.restore();
+
+      drawFitSingleLine(
+        ctx,
+        `组队准备大厅 · ${slots.length} 人小队搭配清单`,
+        padX,
+        102,
+        contentW * 0.65,
+        28,
+        20,
+        800,
+        uiFont,
+        pal.title
+      );
+      drawFitSingleLine(
+        ctx,
+        `全队统一名字牌字体：${teamFontLabel}`,
+        W - padX,
+        102,
+        contentW * 0.34,
+        16,
+        13,
+        600,
+        uiFont,
+        pal.sub,
+        'right'
+      );
+
+      // 上半部分大厅实机预览区
+      ctx.save();
+      roundRectPath(ctx, padX, 132, contentW, 536, 20);
+      ctx.fillStyle = pal.stageFill;
+      ctx.fill();
+      ctx.strokeStyle = pal.stageStroke;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      ctx.shadowColor = cardTheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(15,23,42,0.22)';
+      ctx.shadowBlur = 28;
+      ctx.shadowOffsetY = 10;
+      drawContain(ctx, plateCanvas, padX + 24, 152, contentW - 48, 496);
+      ctx.restore();
+
+      // 下半部分各槽位装扮明细卡
+      const gap = 16;
+      const maxCardW = 390;
+      const rawCardW = (contentW - gap * (slots.length - 1)) / slots.length;
+      const cardW = Math.min(maxCardW, rawCardW);
+      const totalCardsW = cardW * slots.length + gap * (slots.length - 1);
+      const startX = (W - totalCardsW) / 2;
+      const cardY = 692;
+      const cardH = 308;
+
+      const slotThumbs = await Promise.all(
+        slots.map((s) =>
+          Promise.all([
+            loadImg(assetPath(FOLDERS.avatars, s.avatar)),
+            loadImg(assetPath(FOLDERS.teamBackgrounds, s.background)),
+          ])
+        )
+      );
+
+      slots.forEach((s, i) => {
+        const cx = startX + i * (cardW + gap);
+        const [avImg, bgImg] = slotThumbs[i];
+
+        ctx.save();
+        roundRectPath(ctx, cx, cardY, cardW, cardH, 16);
+        ctx.fillStyle = pal.cardFill;
+        ctx.fill();
+        ctx.strokeStyle = pal.cardStroke;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.restore();
+
+        // 槽位头栏
+        ctx.save();
+        roundRectPath(ctx, cx + 16, cardY + 16, 68, 26, 6);
+        ctx.fillStyle = pal.pillFill;
+        ctx.fill();
+        ctx.font = `800 12.5px ${uiFont}`;
+        ctx.fillStyle = pal.pillText;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`0${i + 1} 号位`, cx + 26, cardY + 29);
+        ctx.restore();
+
+        drawFitSingleLine(ctx, s.name || `玩家 0${i + 1}`, cx + 94, cardY + 29, cardW - 110, 18, 14, 800, uiFont, pal.title);
+
+        ctx.save();
+        ctx.strokeStyle = pal.cardStroke;
+        ctx.beginPath();
+        ctx.moveTo(cx + 16, cardY + 54);
+        ctx.lineTo(cx + cardW - 16, cardY + 54);
+        ctx.stroke();
+        ctx.restore();
+
+        // 1. 玩家头像行
+        const r1Y = cardY + 72;
+        drawClippedThumb(ctx, avImg, cx + 16, r1Y, 64, 64, 10, 'cover', pal.thumbBack, pal.thumbStroke);
+        ctx.save();
+        ctx.font = `800 12.5px ${uiFont}`;
+        ctx.fillStyle = pal.accent;
+        ctx.textBaseline = 'top';
+        ctx.fillText('玩家头像', cx + 92, r1Y + 2);
+        ctx.restore();
+        drawWrappedLines(ctx, prettyItemName(s.avatar, '未选择头像'), cx + 92, r1Y + 22, cardW - 108, 21, 2, 700, 15.5, uiFont, pal.title);
+
+        // 2. 队伍格背景行
+        const r2Y = cardY + 162;
+        drawClippedThumb(ctx, bgImg, cx + 16, r2Y, 64, 88, 10, 'teamBg', pal.thumbBack, pal.thumbStroke);
+        ctx.save();
+        ctx.font = `800 12.5px ${uiFont}`;
+        ctx.fillStyle = pal.accent;
+        ctx.textBaseline = 'top';
+        ctx.fillText('队伍格背景', cx + 92, r2Y + 4);
+        ctx.restore();
+        drawWrappedLines(ctx, prettyItemName(s.background, '默认队伍格背景'), cx + 92, r2Y + 26, cardW - 108, 21, 3, 700, 15.5, uiFont, pal.title);
+
+        // 字号小标
+        drawFitSingleLine(ctx, `字号 ${s.nameFontSize}px · 底框透 ${s.nameBgOpacity}%`, cx + 16, cardY + 280, cardW - 32, 12.5, 11, 600, uiFont, pal.dim);
+      });
+
+      // 底部水印栏
+      ctx.save();
+      ctx.font = `800 16px ${uiFont}`;
+      ctx.fillStyle = pal.title;
+      ctx.textBaseline = 'middle';
+      ctx.fillText('卢米亚铭牌工坊', padX, 1040);
+
+      ctx.font = `600 14px ${uiFont}`;
+      ctx.fillStyle = pal.dim;
+      ctx.fillText('· 永恒轮回铭牌与大厅搭配工具', padX + 122, 1040);
+
+      ctx.textAlign = 'right';
+      ctx.font = `700 15px ${uiFont}`;
+      ctx.fillStyle = pal.accent;
+      ctx.fillText('er-plate.pages.dev', W - padX, 1040);
+      ctx.restore();
+    }
+
+    return canvas;
+  }
+
+  let shareCardTheme = null;
+  let currentShareBlob = null;
+  let currentShareUrl = '';
+
+  function syncShareThemeButtons() {
+    document.querySelectorAll('[data-share-theme]').forEach((b) => {
+      b.classList.toggle('active', b.dataset.shareTheme === shareCardTheme);
+    });
+  }
+
+  async function refreshShareModalPreview() {
+    const loadingEl = el('shareLoading');
+    const imgEl = el('sharePreviewImg');
+    const copyBtn = el('shareCopyBtn');
+    const dlBtn = el('shareDownloadBtn');
+    if (loadingEl) { loadingEl.hidden = false; loadingEl.textContent = '正在合成高清搭配清单图…'; }
+    if (imgEl) imgEl.hidden = true;
+    if (copyBtn) copyBtn.disabled = true;
+    if (dlBtn) dlBtn.disabled = true;
+
+    try {
+      const canvas = await buildShareCardCanvas(shareCardTheme || state.theme);
+      if (!canvas) {
+        if (el('shareBackdrop')) el('shareBackdrop').hidden = true;
+        return;
+      }
+      const blob = await canvasToPngBlob(canvas);
+      currentShareBlob = blob;
+      if (currentShareUrl) URL.revokeObjectURL(currentShareUrl);
+      currentShareUrl = URL.createObjectURL(blob);
+      if (imgEl) {
+        imgEl.src = currentShareUrl;
+        imgEl.hidden = false;
+      }
+      if (loadingEl) loadingEl.hidden = true;
+      if (copyBtn) copyBtn.disabled = false;
+      if (dlBtn) dlBtn.disabled = false;
+    } catch (err) {
+      if (loadingEl) loadingEl.textContent = '合成失败，请刷新页面后重试';
+      handleExportError(err);
+    }
+  }
+
+  function openShareModal() {
+    if (!shareCardTheme) shareCardTheme = state.theme;
+    syncShareThemeButtons();
+    if (el('shareBackdrop')) el('shareBackdrop').hidden = false;
+    refreshShareModalPreview();
+  }
+
   function syncThemeBtn() {
     const btn = el('themeToggle');
     if (!btn) return;
@@ -1645,11 +2261,60 @@
   });
   el('exportButton').addEventListener('click', exportPng);
   if (el('copyButton')) el('copyButton').addEventListener('click', copyPng);
+  if (el('shareButton')) el('shareButton').addEventListener('click', openShareModal);
+  if (el('shareBackdrop')) {
+    el('shareClose')?.addEventListener('click', () => { el('shareBackdrop').hidden = true; });
+    el('shareBackdrop').addEventListener('click', (e) => {
+      if (e.target === el('shareBackdrop')) el('shareBackdrop').hidden = true;
+    });
+    document.querySelectorAll('[data-share-theme]').forEach((b) => {
+      b.addEventListener('click', () => {
+        shareCardTheme = b.dataset.shareTheme;
+        syncShareThemeButtons();
+        refreshShareModalPreview();
+      });
+    });
+    el('shareCopyBtn')?.addEventListener('click', async () => {
+      if (!currentShareBlob) return;
+      try {
+        if (navigator.clipboard && window.ClipboardItem) {
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': currentShareBlob })]);
+          showToast('已复制搭配分享图，可直接粘贴到 QQ / 微信！');
+        } else {
+          showToast('当前浏览器不支持剪贴板写入图片，请点击右侧“保存搭配图 PNG”');
+        }
+      } catch (err) {
+        handleExportError(err);
+      }
+    });
+    el('shareDownloadBtn')?.addEventListener('click', () => {
+      if (!currentShareBlob) return;
+      const dlUrl = URL.createObjectURL(currentShareBlob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      const suffix = state.mode === 'role'
+        ? `${characterDisplayName(state.role.characterKey) || '角色'}搭配单`
+        : '队伍大厅搭配单';
+      a.download = `卢米亚铭牌工坊-${suffix}.png`;
+      a.href = dlUrl;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => a.remove(), 300);
+      setTimeout(() => URL.revokeObjectURL(dlUrl), 60000);
+      showToast('搭配分享图 PNG 已保存');
+    });
+  }
   window.addEventListener('resize', () => { if (state.mode === 'role') renderPreview(); });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && el('changelogBackdrop') && !el('changelogBackdrop').hidden) {
-      el('changelogBackdrop').hidden = true;
-      return;
+    if (e.key === 'Escape') {
+      if (el('shareBackdrop') && !el('shareBackdrop').hidden) {
+        el('shareBackdrop').hidden = true;
+        return;
+      }
+      if (el('changelogBackdrop') && !el('changelogBackdrop').hidden) {
+        el('changelogBackdrop').hidden = true;
+        return;
+      }
     }
     if (e.target.matches('input, select')) return;
     if (e.key === '1') { state.mode = 'role'; renderControls(); renderPreview(); }

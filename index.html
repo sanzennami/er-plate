@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Sans+SC:wght@500;700;900&family=Noto+Serif+SC:wght@600;700;900&family=Orbitron:wght@700;800&family=ZCOOL+KuaiLe&family=ZCOOL+XiaoWei&display=swap" media="print" onload="this.media='all'">
-  <link rel="stylesheet" href="styles.css?v=1.1.1">
+  <link rel="stylesheet" href="styles.css?v=1.1.2">
 </head>
 <body data-theme="light">
   <header class="topbar">
@@ -22,7 +22,7 @@
         <p>永恒轮回 · 角色铭牌与大厅搭配</p>
       </div>
       <button class="version-button" id="changelogButton" type="button" title="查看版本更新日志">
-        <span id="versionLabel">v1.1.1</span>
+        <span id="versionLabel">v1.1.2</span>
         <span>· 更新日志</span>
       </button>
     </div>
@@ -38,7 +38,8 @@
 
     <div class="topbar-actions">
       <button class="icon-button" id="themeToggle" type="button" title="切换明暗主题" aria-label="切换明暗主题">☾</button>
-      <button class="secondary-button" id="copyButton" type="button" title="复制高清透明 PNG 到剪贴板（可直接粘贴至 QQ/微信）">复制图片</button>
+      <button class="secondary-button share-trigger-btn" id="shareButton" type="button" title="一键生成包含边框、头像、背景、皮肤名称清单的搭配分享图">✦ 生成搭配图</button>
+      <button class="secondary-button" id="copyButton" type="button" title="复制纯铭牌高清透明 PNG 到剪贴板">复制图片</button>
       <button class="export-button" id="exportButton" type="button"><span aria-hidden="true">↓</span> 导出高清 PNG</button>
     </div>
   </header>
@@ -116,8 +117,34 @@
     </div>
   </div>
 
+  <div class="modal-backdrop" id="shareBackdrop" hidden>
+    <div class="share-modal" role="dialog" aria-modal="true" aria-labelledby="shareModalTitle">
+      <div class="changelog-head">
+        <div class="share-head-left">
+          <h3 id="shareModalTitle">铭牌搭配分享图预览</h3>
+          <div class="share-theme-switch" role="group" aria-label="分享图底色">
+            <button type="button" class="share-theme-btn active" data-share-theme="light">清爽白卡</button>
+            <button type="button" class="share-theme-btn" data-share-theme="dark">深邃黑卡</button>
+          </div>
+        </div>
+        <button class="changelog-close" id="shareClose" type="button" aria-label="关闭">✕</button>
+      </div>
+      <div class="share-preview-wrap" id="sharePreviewWrap">
+        <div class="share-loading" id="shareLoading">正在合成高清搭配清单图…</div>
+        <img id="sharePreviewImg" alt="铭牌搭配分享图预览" hidden>
+      </div>
+      <div class="share-foot">
+        <span class="share-foot-hint">自动附上当前所用实验体、皮肤、铭牌边框、背景板与头像官方名称</span>
+        <div class="share-foot-actions">
+          <button type="button" class="secondary-button" id="shareCopyBtn">复制搭配图（粘贴 QQ/微信）</button>
+          <button type="button" class="export-button" id="shareDownloadBtn"><span aria-hidden="true">↓</span> 保存搭配图 PNG</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="extracted_assets/assets.js?v=1.1.1"></script>
-  <script src="app.js?v=1.1.1"></script>
+  <script src="extracted_assets/assets.js?v=1.1.2"></script>
+  <script src="app.js?v=1.1.2"></script>
 </body>
 </html>
