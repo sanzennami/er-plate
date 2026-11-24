@@ -1162,19 +1162,40 @@
     el('assetCount').textContent = `${total.toLocaleString()} 项素材${USE_EXTRACTED ? ' · 原名索引' : ' · 旧库'}`;
   }
 
-  // ==================== 1:1 高清导出 PNG（严格按所选字体、规整底框与 2 倍超采样映射） ====================
-  function loadImg(src) {
-    if (!src) return Promise.resolve(null);
+  // ==================== 1:1 高清导出 PNG（防字体超时阻塞 + Blob 同源防污染 + 本地 file:// 友好提示） ====================
+  async function loadImg(src) {
+    if (!src) return null;
+    // 在 http/https 下优先转本地内存 Blob URL，彻底杜绝任何 CDN 头导致的 Canvas 跨域污染
+    if (location.protocol === 'http:' || location.protocol === 'https:') {
+      try {
+        const resp = await fetch(src);
+        if (resp.ok) {
+          const blob = await resp.blob();
+          const objUrl = URL.createObjectURL(blob);
+          const img = await new Promise((resolve) => {
+            const im = new Image();
+            im.onload = () => resolve(im);
+            im.onerror = () => resolve(null);
+            im.src = objUrl;
+          });
+          setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
+          if (img && img.naturalWidth > 0) return img;
+        }
+      } catch {}
+    }
     return new Promise((resolve) => {
       const img = new Image();
-      img.onload = () => resolve(img);
+      if (location.protocol === 'http:' || location.protocol === 'https:') {
+        img.crossOrigin = 'anonymous';
+      }
+      img.onload = () => resolve(img.naturalWidth > 0 ? img : null);
       img.onerror = () => resolve(null);
       img.src = src;
     });
   }
 
   function drawCover(ctx, img, x, y, w, h) {
-    if (!img) return;
+    if (!img || !img.naturalWidth || !img.naturalHeight) return;
     const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
     const dw = img.naturalWidth * scale;
     const dh = img.naturalHeight * scale;
@@ -1182,7 +1203,7 @@
   }
 
   function drawContain(ctx, img, x, y, w, h) {
-    if (!img) return;
+    if (!img || !img.naturalWidth || !img.naturalHeight) return;
     const scale = Math.min(w / img.naturalWidth, h / img.naturalHeight);
     const dw = img.naturalWidth * scale;
     const dh = img.naturalHeight * scale;
@@ -1222,9 +1243,13 @@
     ctx.restore();
   }
 
-  async function exportPng() {
+  async function buildExportCanvas() {
+    // 最多等待字体 600ms，防止国内网络访问 Google Fonts 缓慢时卡死导出按钮
     if (document.fonts && document.fonts.ready) {
-      try { await document.fonts.ready; } catch {}
+      await Promise.race([
+        document.fonts.ready.catch(() => {}),
+        new Promise((r) => setTimeout(r, 600)),
+      ]);
     }
 
     const canvas = document.createElement('canvas');
@@ -1339,7 +1364,7 @@
       ctx.restore();
     } else {
       const slots = state.teamSlots.filter((s) => s.enabled);
-      if (!slots.length) { showToast('请至少启用 1 个队伍槽位'); return; }
+      if (!slots.length) { showToast('请至少启用 1 个队伍槽位'); return null; }
       const teamFont = resolveFontFamily(state.teamFontKey, state.teamCustomFont);
       const SCALE = 1.4;
       const sw = Math.round(282 * SCALE);
@@ -1378,7 +1403,7 @@
         const cy = sh * (tm.avY / 100);
         if (av) drawCover(ctx, av, cx - avSize / 2, cy - avSize / 2, avSize, avSize);
 
-        const label = s.name || 'PLAYER';
+        const label = s.name || '玩家';
         const fontPx = Math.round(s.nameFontSize * SCALE);
         ctx.font = `700 ${fontPx}px ${teamFont}`;
         const padX = Math.round(11 * SCALE);
@@ -1403,15 +1428,87 @@
         ctx.restore();
       }
     }
+    return canvas;
+  }
 
-    canvas.toBlob((blob) => {
+  function canvasToPngBlob(canvas) {
+    return new Promise((resolve, reject) => {
+      try {
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve(blob);
+            return;
+          }
+          try {
+            const dataUrl = canvas.toDataURL('image/png');
+            const bin = atob(dataUrl.split(',')[1] || '');
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+            resolve(new Blob([bytes], { type: 'image/png' }));
+          } catch (e2) {
+            reject(e2);
+          }
+        }, 'image/png');
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  function handleExportError(err) {
+    console.error('Export PNG failed:', err);
+    if (location.protocol === 'file:') {
+      showToast('浏览器安全策略禁止 file:// 直接导出画布！请使用线上网址 er-plate.pages.dev 或双击「本地启动网页.bat」');
+    } else {
+      showToast(`导出失败：${err?.message || '请刷新页面后重试'}`);
+    }
+  }
+
+  async function exportPng() {
+    const btn = el('exportButton');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.textContent = '合成中…'; }
+    try {
+      const canvas = await buildExportCanvas();
+      if (!canvas) return;
+      const blob = await canvasToPngBlob(canvas);
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
+      a.style.display = 'none';
       a.download = `卢米亚铭牌工坊-${state.mode === 'role' ? '角色铭牌' : '队伍大厅'}.png`;
-      a.href = URL.createObjectURL(blob);
+      a.href = url;
+      document.body.appendChild(a);
       a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      setTimeout(() => a.remove(), 300);
+      // 保留 60 秒以兼容开启了“每次下载前询问保存位置”弹窗的浏览器
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
       showToast('高清 PNG 已导出');
-    }, 'image/png');
+    } catch (err) {
+      handleExportError(err);
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
+    }
+  }
+
+  async function copyPng() {
+    const btn = el('copyButton');
+    const origText = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '复制中…'; }
+    try {
+      const canvas = await buildExportCanvas();
+      if (!canvas) return;
+      const blob = await canvasToPngBlob(canvas);
+      if (navigator.clipboard && window.ClipboardItem) {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        showToast('已复制高清透明 PNG 到剪贴板，可直接粘贴到 QQ / 微信！');
+      } else {
+        showToast('当前浏览器不支持剪贴板写入图片，请点击右侧“导出高清 PNG”');
+      }
+    } catch (err) {
+      handleExportError(err);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = origText; }
+    }
   }
 
   function syncThemeBtn() {
@@ -1442,6 +1539,7 @@
     showToast('已恢复默认校准参数');
   });
   el('exportButton').addEventListener('click', exportPng);
+  if (el('copyButton')) el('copyButton').addEventListener('click', copyPng);
   window.addEventListener('resize', () => { if (state.mode === 'role') renderPreview(); });
   document.addEventListener('keydown', (e) => {
     if (e.target.matches('input, select')) return;

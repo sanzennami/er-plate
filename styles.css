@@ -131,8 +131,8 @@ button, input, select { font: inherit; color: inherit; }
   color: var(--teal);
 }
 
-.topbar-actions { margin-left: auto; display: flex; gap: 10px; align-items: center; }
-.icon-button, .export-button, .reset-button {
+.topbar-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.icon-button, .secondary-button, .export-button, .reset-button {
   border: 1px solid var(--line);
   border-radius: 7px;
   cursor: pointer;
@@ -147,10 +147,27 @@ button, input, select { font: inherit; color: inherit; }
   color: var(--muted);
   font-size: 15px;
 }
-.icon-button:hover {
+.icon-button:hover,
+.secondary-button:hover {
   color: var(--teal);
   border-color: var(--teal);
   background: var(--teal-soft);
+}
+.secondary-button {
+  height: 36px;
+  padding: 0 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--panel-raised);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.export-button:disabled,
+.secondary-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 .export-button {
   height: 36px;
