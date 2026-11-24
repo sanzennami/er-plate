@@ -1,6 +1,46 @@
 (function () {
   'use strict';
 
+  const APP_VERSION = '1.1.0';
+  const FALLBACK_CHANGELOG = [
+    {
+      version: '1.1.0',
+      date: '2026-11-25',
+      items: [
+        '修复导出高清 PNG 时角色半身立绘与右下双行文字相对预览下移错位的问题，预览与导出实现 1:1 零误差重合',
+        '角色半身立绘默认缩放调整为约 90% 黄金比例（宽 94%、高 46%），彻底消除窄立绘右侧露边问题',
+        '初始默认选中实验体切换为「俞岷」',
+        '队伍大厅新增常驻「名字字号 + 一键同步字号到全队」快捷栏，调好一个号位即可秒同步全队字号',
+        '新增顶栏版本号与「更新日志」弹窗，并实装 version.json 自动版本检测与免手动清缓存无感刷新机制',
+      ],
+    },
+    {
+      version: '1.0.3',
+      date: '2026-11-25',
+      items: [
+        '修复外网字体阻塞导致导出卡顿问题，新增顶栏「复制图片」一键写入系统剪贴板功能',
+        '定名「卢米亚铭牌工坊」，全量 2,740 项素材无损透明转码为高画质 WebP 并上线 Cloudflare Pages',
+      ],
+    },
+    {
+      version: '1.0.2',
+      date: '2026-11-25',
+      items: [
+        '角色铭牌与队伍大厅双模式新增 11 款预设中韩电竞/书法字体及自定义本机字体支持',
+        '按 S5 · DAEJEON CYBERS 与 S11 · CNJ 官方凹槽校准队伍名字牌对称中轴（X=50.0%, Y=52.3%, 统一最小宽度 38.6%）',
+        '修复点选实验体/头像/边框时列表滚动条回顶问题，改为原位高亮与流式续载',
+      ],
+    },
+    {
+      version: '1.0.1',
+      date: '2026-11-24',
+      items: [
+        '重导出全部 296 款边框与 297 张人物背景至 Unity 原生 280×512 满画布，根治半截框与异形边框错位，剔除特效散件',
+        '默认主题切换为清爽日间模式，修复潜能下拉框文字裁切，微调面板默认收起并将滑块设为 0% 偏移居中基准',
+      ],
+    },
+  ];
+
   const EXTRACTED_RAW = window.ER_EXTRACTED_ASSETS || null;
   const USE_EXTRACTED = Boolean(
     EXTRACTED_RAW &&
@@ -172,7 +212,7 @@
 
   const defaultCharFile = findAsset(
     basePortraits,
-    (f) => f === '阿迪娜.png' || /_Adina_S000\./i.test(f) || rawZhLabel(f) === '阿迪娜' || /_YuMin_S000\./i.test(f) || rawZhLabel(f).includes('俞岷')
+    (f) => f === '俞岷.png' || f === '俞岷.webp' || /_YuMin_S000\./i.test(f) || rawZhLabel(f) === '俞岷' || rawZhLabel(f).includes('俞岷')
   );
   const defaultCharKey = characterForPortrait(defaultCharFile);
   const defaultCharZh = characterDisplayName(defaultCharKey);
@@ -180,10 +220,11 @@
   const defaultFull = findAsset(skinsFor(defaultCharKey, 'full'), isDefaultSkinFile);
 
   // ==================== 280x512 (306x560) 实机加载界面像素级基准原点 ====================
+  // 半身立绘默认采用 90% 黄金缩放水平（宽 94.0%，中心 X=51.5%、Y=46.0%），预览与导出 1:1 完全一致
   const ROLE_BASE = {
-    halfX: 51.0,
-    halfY: 50.0,
-    halfWidth: 104.5,
+    halfX: 51.5,
+    halfY: 46.0,
+    halfWidth: 94.0,
     fullX: 51.0,
     fullY: 52.0,
     fullWidth: 82.0,
@@ -279,9 +320,10 @@
     ...TEAM_SLOT_DEFAULTS,
   });
 
-  // 升级版本号至 v9：平滑继承已选角色/背景/头像/昵称，同步升级队伍名字牌对称居中与字体系统
-  const STORAGE_KEY = 'er-plate-studio-calibrated-v9';
+  // 升级版本号至 v10 (v1.1.0)：默认实验体切回俞岷，半身立绘归零基准升级为 90% 比例水平
+  const STORAGE_KEY = 'er-plate-studio-calibrated-v10';
   const LEGACY_KEYS = [
+    'er-plate-studio-calibrated-v9',
     'er-plate-studio-calibrated-v8',
     'er-plate-studio-calibrated-v7',
     'er-plate-studio-calibrated-v6',
@@ -338,6 +380,15 @@
           keepKeys.forEach((k) => {
             if (saved.role[k] !== undefined) base.role[k] = saved.role[k];
           });
+          // 若旧缓存里仍停留在之前默认的阿迪娜，自动无缝切换为新默认实验体「俞岷」
+          if (/_Adina_S000\./i.test(String(base.role.character || ''))) {
+            base.role.character = freshRole.character;
+            base.role.characterKey = freshRole.characterKey;
+            base.role.halfSkin = freshRole.halfSkin;
+            base.role.fullSkin = freshRole.fullSkin;
+            base.role.skin = base.role.variant === 'full' ? freshRole.fullSkin : freshRole.halfSkin;
+            base.role.skinLabel = displaySkinTitle(freshRole.characterKey, base.role.skin, base.role.variant);
+          }
         } else {
           base.role = {
             ...freshRole,
@@ -936,6 +987,14 @@
 
       ${fontSelectHtml('teamFontSelect', 'teamCustomFont', 'teamFontBar', state.teamFontKey || 'default', state.teamCustomFont, '全队名字牌字体（统一应用至全队与导出图）')}
 
+      <div class="inline-size-sync">
+        <label class="range-field">
+          <span>当前槽位名字字号 <output id="tQuickFsVal">${slot.nameFontSize}px</output></span>
+          <input id="tQuickFs" type="range" min="10" max="24" step="0.5" value="${slot.nameFontSize}" title="双击恢复默认 14px">
+        </label>
+        <button type="button" class="sync-pill-btn" id="syncTeamFontSizeAll" title="将当前号位的名字字号一键同步应用到全部 4 个队友槽位">⇄ 同步字号到全队</button>
+      </div>
+
       <details class="position-details" id="teamPosDetails"${teamPosOpen ? ' open' : ''}>
         <summary>名字字号/底框宽透 &amp; 头像位置微调（默认已对称校准，可选展开）</summary>
         <div class="mini-reset-bar">
@@ -992,6 +1051,7 @@
     });
 
     const syncTeamSliders = () => {
+      el('tQuickFs').value = slot.nameFontSize; el('tQuickFsVal').textContent = `${slot.nameFontSize}px`;
       el('tNameFs').value = slot.nameFontSize; el('tNameFsVal').textContent = `${slot.nameFontSize}px`;
       el('tNameOp').value = slot.nameBgOpacity; el('tNameOpVal').textContent = `${slot.nameBgOpacity}%`;
       el('tNameMinW').value = slot.nameMinWidth; el('tNameMinWVal').textContent = `${slot.nameMinWidth}%`;
@@ -1001,6 +1061,24 @@
       el('tAvY').value = slot.avatarOffsetY; el('tAvYVal').textContent = fmtSigned(slot.avatarOffsetY);
       el('tAvS').value = slot.avatarScale; el('tAvSVal').textContent = `${slot.avatarScale}%`;
     };
+
+    el('tQuickFs').addEventListener('input', () => {
+      slot.nameFontSize = num(el('tQuickFs').value, slot.nameFontSize, 10, 24);
+      el('tQuickFsVal').textContent = `${slot.nameFontSize}px`;
+      el('tNameFs').value = slot.nameFontSize;
+      el('tNameFsVal').textContent = `${slot.nameFontSize}px`;
+      renderPreview();
+    });
+    el('tQuickFs').addEventListener('dblclick', () => {
+      slot.nameFontSize = TEAM_SLOT_DEFAULTS.nameFontSize;
+      syncTeamSliders();
+      renderPreview();
+    });
+    el('syncTeamFontSizeAll').addEventListener('click', () => {
+      state.teamSlots.forEach((s) => { s.nameFontSize = slot.nameFontSize; });
+      renderPreview();
+      showToast(`已将名字字号 ${slot.nameFontSize}px 同步到全队所有槽位`);
+    });
 
     const bind = (id, outId, key, min, max, fmt) => {
       const inp = el(id); const out = el(outId);
@@ -1017,7 +1095,10 @@
         renderPreview();
       });
     };
-    bind('tNameFs', 'tNameFsVal', 'nameFontSize', 10, 24, (v) => `${v}px`);
+    bind('tNameFs', 'tNameFsVal', 'nameFontSize', 10, 24, (v) => {
+      if (el('tQuickFs')) { el('tQuickFs').value = v; el('tQuickFsVal').textContent = `${v}px`; }
+      return `${v}px`;
+    });
     bind('tNameOp', 'tNameOpVal', 'nameBgOpacity', 0, 95, (v) => `${v}%`);
     bind('tNameMinW', 'tNameMinWVal', 'nameMinWidth', 18, 75, (v) => `${v}%`);
     bind('tNameX', 'tNameXVal', 'nameOffsetX', -30, 30, (v) => fmtSigned(v));
@@ -1101,7 +1182,7 @@
       const stageScale = Math.min(1.08, availH / 560).toFixed(3);
 
       grid.innerHTML = `<article class="role-plate-card" id="rolePlateCard" style="transform:scale(${stageScale})">
-        <div class="role-plate-inner">
+        <div class="role-plate-inner${r.background ? '' : ' no-bg'}">
           ${r.background ? `<img class="role-bg-img" style="${bgFitStyle}" src="${assetPath(FOLDERS.characterBackgrounds, r.background)}" alt="">` : ''}
           ${r.skin ? `<div class="role-skin-clip"><img class="role-skin-img" style="left:${m.artX.toFixed(2)}%;top:${m.artY.toFixed(2)}%;width:${m.artWidth.toFixed(2)}%" src="${assetPath(skinFolder, r.skin)}" alt=""></div>` : ''}
           ${!r.border ? '<div class="role-nameplate-bar"></div>' : ''}
@@ -1282,11 +1363,12 @@
       ctx.closePath();
       ctx.clip();
 
-      ctx.fillStyle = '#141920';
-      ctx.fillRect(0, 0, W, H);
       if (bg) {
         if (USE_EXTRACTED) ctx.drawImage(bg, 0, 0, W, H);
         else drawCover(ctx, bg, 0, 0, W, H);
+      } else {
+        ctx.fillStyle = '#141920';
+        ctx.fillRect(0, 0, W, H);
       }
 
       if (skin) {
@@ -1348,6 +1430,12 @@
       const centerY = H * (m.textY / 100);
       const skinPx = r.skinFontSize * SCALE;
       const namePx = r.nameFontSize * SCALE;
+      // 严格按 CSS 行高盒模型 (1.25 + 3px margin + 1.2) 计算双行文字中心 Y，与实时预览 0 像素误差
+      const skinLineH = skinPx * 1.25;
+      const nameLineH = namePx * 1.2;
+      const lineGap = 3 * SCALE;
+      const totalTextH = skinLineH + lineGap + nameLineH;
+      const blockTop = centerY - totalTextH / 2;
 
       ctx.save();
       ctx.textAlign = 'right';
@@ -1356,11 +1444,11 @@
       ctx.shadowBlur = 8;
       ctx.font = `700 ${skinPx}px ${roleFont}`;
       ctx.fillStyle = r.skinColor || '#78d9ff';
-      ctx.fillText(r.skinLabel || '', textRightX, centerY - namePx * 0.58);
+      ctx.fillText(r.skinLabel || '', textRightX, blockTop + skinLineH / 2);
 
       ctx.font = `800 ${namePx}px ${roleFont}`;
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(r.playerName || '', textRightX, centerY + skinPx * 0.62);
+      ctx.fillText(r.playerName || '', textRightX, blockTop + skinLineH + lineGap + nameLineH / 2);
       ctx.restore();
     } else {
       const slots = state.teamSlots.filter((s) => s.enabled);
@@ -1542,10 +1630,88 @@
   if (el('copyButton')) el('copyButton').addEventListener('click', copyPng);
   window.addEventListener('resize', () => { if (state.mode === 'role') renderPreview(); });
   document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && el('changelogBackdrop') && !el('changelogBackdrop').hidden) {
+      el('changelogBackdrop').hidden = true;
+      return;
+    }
     if (e.target.matches('input, select')) return;
     if (e.key === '1') { state.mode = 'role'; renderControls(); renderPreview(); }
     if (e.key === '2') { state.mode = 'team'; renderControls(); renderPreview(); }
   });
+
+  // ==================== 更新日志弹窗 & 免手动清缓存自动热刷新机制 ====================
+  let cachedChangelog = FALLBACK_CHANGELOG;
+  let knownBuildStamp = null;
+
+  function renderChangelogModal(entries) {
+    const body = el('changelogBody');
+    if (!body) return;
+    body.innerHTML = (entries || FALLBACK_CHANGELOG)
+      .map(
+        (ent) => `<div class="changelog-entry">
+          <div class="changelog-meta">
+            <span class="changelog-ver">v${esc(ent.version)}</span>
+            <span class="changelog-date">${esc(ent.date || '')}</span>
+          </div>
+          <ul>${(ent.items || []).map((it) => `<li>${esc(it)}</li>`).join('')}</ul>
+        </div>`
+      )
+      .join('');
+  }
+
+  async function checkRemoteVersion(isInitial = false) {
+    if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
+    try {
+      const resp = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (Array.isArray(data.changelog) && data.changelog.length) {
+        cachedChangelog = data.changelog;
+        renderChangelogModal(cachedChangelog);
+      }
+      const remoteVer = String(data.version || '').trim();
+      const remoteStamp = `${remoteVer}_${data.buildId || data.updatedAt || ''}`;
+      if (isInitial && !knownBuildStamp) {
+        knownBuildStamp = remoteStamp;
+      }
+      const versionChanged = remoteVer && remoteVer !== APP_VERSION;
+      const buildChanged = knownBuildStamp && remoteStamp !== knownBuildStamp;
+      if (versionChanged || buildChanged) {
+        const guardKey = 'er_plate_autoreload_stamp';
+        if (sessionStorage.getItem(guardKey) === remoteStamp) return;
+        sessionStorage.setItem(guardKey, remoteStamp);
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
+        showToast(`检测到新版本 v${remoteVer}，正在自动刷新至最新版…`);
+        setTimeout(() => {
+          const u = new URL(location.href);
+          u.searchParams.set('_v', remoteStamp);
+          location.replace(u.toString());
+        }, 550);
+      }
+    } catch {}
+  }
+
+  if (el('versionLabel')) el('versionLabel').textContent = `v${APP_VERSION}`;
+  renderChangelogModal(cachedChangelog);
+
+  if (el('changelogButton') && el('changelogBackdrop')) {
+    el('changelogButton').addEventListener('click', () => {
+      renderChangelogModal(cachedChangelog);
+      el('changelogBackdrop').hidden = false;
+    });
+    el('changelogClose')?.addEventListener('click', () => {
+      el('changelogBackdrop').hidden = true;
+    });
+    el('changelogBackdrop').addEventListener('click', (e) => {
+      if (e.target === el('changelogBackdrop')) el('changelogBackdrop').hidden = true;
+    });
+  }
+
+  checkRemoteVersion(true);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') checkRemoteVersion(false);
+  });
+  setInterval(() => checkRemoteVersion(false), 180000);
 
   document.body.dataset.theme = state.theme;
   syncThemeBtn();
