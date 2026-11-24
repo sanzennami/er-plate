@@ -1,8 +1,17 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.1.3';
+  const APP_VERSION = '1.1.4';
   const FALLBACK_CHANGELOG = [
+    {
+      version: '1.1.4',
+      date: '2026-11-25',
+      items: [
+        '全面完成手机端 UI 响应式适配：双行紧凑顶栏、防 iOS 输入框自动放大、单列大触控滑块、底部全面屏安全区留白及「放大预览 / 恢复分屏」一键切换',
+        '角色铭牌与队伍大厅双模式实装等比自适应画布缩放盒，4 人队伍大厅在手机竖屏下亦可完整同屏等比预览、字号零变形',
+        '角色铭牌新增手机端单指拖拽移动立绘、双指捏合缩放立绘（120fps 原位丝滑更新），并兼容微信/QQ 内置浏览器长按保存高清原图与搭配分享图',
+      ],
+    },
     {
       version: '1.1.3',
       date: '2026-11-25',
@@ -1162,8 +1171,58 @@
     }
   }
 
-  // ==================== 左侧画布直接拖拽移动立绘 + 滚轮缩放立绘 ====================
+  // ==================== 画布直接拖拽移动立绘 + 滚轮/双指捏合缩放立绘（桌面与手机双端 120fps 原位丝滑交互） ====================
+  const isTouchPrimary = () => Boolean(window.matchMedia?.('(pointer: coarse)')?.matches || 'ontouchstart' in window);
+  const isInAppWebView = () => /MicroMessenger|QQ\/|TIM\/|Weibo/i.test(navigator.userAgent || '');
+
+  let currentStageScale = 1;
+  let currentStageNatW = 306;
+  let currentStageNatH = 560;
+  let currentStageMaxScale = 1.08;
   let dragCtx = null;
+  let pinchCtx = null;
+
+  function computeStageFit(natW, natH, maxScale) {
+    const stageEl = el('previewStage');
+    const pad = window.innerWidth <= 960 ? 12 : 24;
+    const availW = Math.max(120, (stageEl?.clientWidth || 360) - pad);
+    const availH = Math.max(120, (stageEl?.clientHeight || 360) - pad);
+    return clamp(Math.min(maxScale, availW / natW, availH / natH), 0.16, maxScale);
+  }
+
+  function updateStageScaleOnly() {
+    const box = document.querySelector('#previewGrid .preview-scale-box');
+    const inner = document.querySelector('#previewGrid .preview-scale-inner');
+    if (!box || !inner) return;
+    currentStageScale = computeStageFit(currentStageNatW, currentStageNatH, currentStageMaxScale);
+    box.style.width = `${(currentStageNatW * currentStageScale).toFixed(1)}px`;
+    box.style.height = `${(currentStageNatH * currentStageScale).toFixed(1)}px`;
+    inner.style.transform = `scale(${currentStageScale.toFixed(4)})`;
+  }
+
+  function updateRoleArtInPlace() {
+    const skinImg = document.querySelector('#rolePlateCard .role-skin-img');
+    if (!skinImg) {
+      renderPreview();
+      return;
+    }
+    const m = computeRoleMetrics(state.role);
+    skinImg.style.left = `${m.artX.toFixed(2)}%`;
+    skinImg.style.top = `${m.artY.toFixed(2)}%`;
+    skinImg.style.width = `${m.artWidth.toFixed(2)}%`;
+    persist();
+  }
+
+  function syncArtSlidersDom(tf) {
+    if (el('artX')) { el('artX').value = tf.x; el('artXVal').textContent = fmtSigned(tf.x); }
+    if (el('artY')) { el('artY').value = tf.y; el('artYVal').textContent = fmtSigned(tf.y); }
+    if (el('artScale')) { el('artScale').value = tf.scale; el('artScaleVal').textContent = `${tf.scale}%`; }
+  }
+
+  function touchDist(t1, t2) {
+    return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+  }
+
   function bindRoleCanvasGesture(cardEl) {
     if (!cardEl) return;
     cardEl.addEventListener('mousedown', (e) => {
@@ -1177,22 +1236,76 @@
       const tf = currentArtTransform();
       const delta = e.deltaY < 0 ? 3 : -3;
       tf.scale = clamp(tf.scale + delta, 40, 160);
-      const sInp = el('artScale'); const sOut = el('artScaleVal');
-      if (sInp && sOut) { sInp.value = tf.scale; sOut.textContent = `${tf.scale}%`; }
-      renderPreview();
+      syncArtSlidersDom(tf);
+      updateRoleArtInPlace();
     }, { passive: false });
+
+    cardEl.addEventListener('touchstart', (e) => {
+      if (state.mode !== 'role') return;
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        const tf = currentArtTransform();
+        pinchCtx = null;
+        dragCtx = { startX: t.clientX, startY: t.clientY, origX: tf.x, origY: tf.y };
+      } else if (e.touches.length >= 2) {
+        e.preventDefault();
+        const tf = currentArtTransform();
+        dragCtx = null;
+        pinchCtx = {
+          startDist: Math.max(20, touchDist(e.touches[0], e.touches[1])),
+          origScale: tf.scale,
+        };
+      }
+    }, { passive: false });
+
+    cardEl.addEventListener('touchmove', (e) => {
+      if (state.mode !== 'role') return;
+      if (e.touches.length >= 2 && pinchCtx) {
+        e.preventDefault();
+        const dist = Math.max(20, touchDist(e.touches[0], e.touches[1]));
+        const tf = currentArtTransform();
+        tf.scale = Math.round(clamp(pinchCtx.origScale * (dist / pinchCtx.startDist), 40, 160));
+        syncArtSlidersDom(tf);
+        updateRoleArtInPlace();
+      } else if (e.touches.length === 1 && dragCtx) {
+        e.preventDefault();
+        const t = e.touches[0];
+        const sc = Math.max(0.2, currentStageScale);
+        const tf = currentArtTransform();
+        const dxPct = ((t.clientX - dragCtx.startX) / (306 * sc)) * 100;
+        const dyPct = ((t.clientY - dragCtx.startY) / (560 * sc)) * 100;
+        tf.x = Math.round(clamp(dragCtx.origX + dxPct, -45, 45) * 2) / 2;
+        tf.y = Math.round(clamp(dragCtx.origY + dyPct, -45, 45) * 2) / 2;
+        syncArtSlidersDom(tf);
+        updateRoleArtInPlace();
+      }
+    }, { passive: false });
+
+    const endTouch = (e) => {
+      if (!e.touches || e.touches.length === 0) {
+        dragCtx = null;
+        pinchCtx = null;
+      } else if (e.touches.length === 1) {
+        const t = e.touches[0];
+        const tf = currentArtTransform();
+        pinchCtx = null;
+        dragCtx = { startX: t.clientX, startY: t.clientY, origX: tf.x, origY: tf.y };
+      }
+    };
+    cardEl.addEventListener('touchend', endTouch);
+    cardEl.addEventListener('touchcancel', endTouch);
   }
 
   window.addEventListener('mousemove', (e) => {
     if (!dragCtx || state.mode !== 'role') return;
+    const sc = Math.max(0.2, currentStageScale);
     const tf = currentArtTransform();
-    const dxPct = ((e.clientX - dragCtx.startX) / 306) * 100;
-    const dyPct = ((e.clientY - dragCtx.startY) / 560) * 100;
+    const dxPct = ((e.clientX - dragCtx.startX) / (306 * sc)) * 100;
+    const dyPct = ((e.clientY - dragCtx.startY) / (560 * sc)) * 100;
     tf.x = Math.round(clamp(dragCtx.origX + dxPct, -45, 45) * 2) / 2;
     tf.y = Math.round(clamp(dragCtx.origY + dyPct, -45, 45) * 2) / 2;
-    if (el('artX')) { el('artX').value = tf.x; el('artXVal').textContent = fmtSigned(tf.x); }
-    if (el('artY')) { el('artY').value = tf.y; el('artYVal').textContent = fmtSigned(tf.y); }
-    renderPreview();
+    syncArtSlidersDom(tf);
+    updateRoleArtInPlace();
   });
   window.addEventListener('mouseup', () => { dragCtx = null; });
 
@@ -1210,36 +1323,50 @@
       const bgFitStyle = USE_EXTRACTED ? '' : 'object-fit:cover;';
       const borderFitStyle = USE_EXTRACTED ? '' : 'object-fit:contain;';
 
-      const availH = Math.max(320, (el('previewStage')?.clientHeight || 600) - 32);
-      const stageScale = Math.min(1.08, availH / 560).toFixed(3);
+      currentStageNatW = 306;
+      currentStageNatH = 560;
+      currentStageMaxScale = 1.08;
+      currentStageScale = computeStageFit(currentStageNatW, currentStageNatH, currentStageMaxScale);
 
-      grid.innerHTML = `<article class="role-plate-card" id="rolePlateCard" style="transform:scale(${stageScale})">
-        <div class="role-plate-inner${r.background ? '' : ' no-bg'}">
-          ${r.background ? `<img class="role-bg-img" style="${bgFitStyle}" src="${assetPath(FOLDERS.characterBackgrounds, r.background)}" alt="">` : ''}
-          ${r.skin ? `<div class="role-skin-clip"><img class="role-skin-img" style="left:${m.artX.toFixed(2)}%;top:${m.artY.toFixed(2)}%;width:${m.artWidth.toFixed(2)}%" src="${assetPath(skinFolder, r.skin)}" alt=""></div>` : ''}
-          ${!r.border ? '<div class="role-nameplate-bar"></div>' : ''}
+      grid.innerHTML = `<div class="preview-scale-box" style="width:${(306 * currentStageScale).toFixed(1)}px;height:${(560 * currentStageScale).toFixed(1)}px">
+        <div class="preview-scale-inner" style="width:306px;height:560px;transform:scale(${currentStageScale.toFixed(4)})">
+          <article class="role-plate-card" id="rolePlateCard">
+            <div class="role-plate-inner${r.background ? '' : ' no-bg'}">
+              ${r.background ? `<img class="role-bg-img" style="${bgFitStyle}" src="${assetPath(FOLDERS.characterBackgrounds, r.background)}" alt="">` : ''}
+              ${r.skin ? `<div class="role-skin-clip"><img class="role-skin-img" style="left:${m.artX.toFixed(2)}%;top:${m.artY.toFixed(2)}%;width:${m.artWidth.toFixed(2)}%" src="${assetPath(skinFolder, r.skin)}" alt=""></div>` : ''}
+              ${!r.border ? '<div class="role-nameplate-bar"></div>' : ''}
+            </div>
+            ${r.showBadges ? `<div class="role-side-badges">
+              <span class="role-badge-weapon">⚔</span>
+              <span class="role-badge-trait ${esc(r.primaryTrait)}"></span>
+              <span class="role-badge-trait ${esc(r.subTrait)}"></span>
+            </div>` : ''}
+            ${r.border ? `<img class="role-border-img" style="${borderFitStyle}" src="${assetPath(FOLDERS.borders, r.border)}" alt="">` : ''}
+            ${r.avatar ? `<img class="role-player-avatar" style="left:${m.avatarX.toFixed(2)}%;top:${m.avatarY.toFixed(2)}%;width:${m.avatarWidth.toFixed(2)}%" src="${assetPath(FOLDERS.avatars, r.avatar)}" alt="">` : ''}
+            <div class="role-text-group" style="right:${m.textRight.toFixed(2)}%;top:${m.textY.toFixed(2)}%;font-family:${esc(roleFont)}">
+              <span class="role-skin-title" style="color:${esc(r.skinColor || '#78d9ff')};font-size:${r.skinFontSize}px">${esc(r.skinLabel)}</span>
+              <strong class="role-player-name" style="font-size:${r.nameFontSize}px">${esc(r.playerName)}</strong>
+            </div>
+          </article>
         </div>
-        ${r.showBadges ? `<div class="role-side-badges">
-          <span class="role-badge-weapon">⚔</span>
-          <span class="role-badge-trait ${esc(r.primaryTrait)}"></span>
-          <span class="role-badge-trait ${esc(r.subTrait)}"></span>
-        </div>` : ''}
-        ${r.border ? `<img class="role-border-img" style="${borderFitStyle}" src="${assetPath(FOLDERS.borders, r.border)}" alt="">` : ''}
-        ${r.avatar ? `<img class="role-player-avatar" style="left:${m.avatarX.toFixed(2)}%;top:${m.avatarY.toFixed(2)}%;width:${m.avatarWidth.toFixed(2)}%" src="${assetPath(FOLDERS.avatars, r.avatar)}" alt="">` : ''}
-        <div class="role-text-group" style="right:${m.textRight.toFixed(2)}%;top:${m.textY.toFixed(2)}%;font-family:${esc(roleFont)}">
-          <span class="role-skin-title" style="color:${esc(r.skinColor || '#78d9ff')};font-size:${r.skinFontSize}px">${esc(r.skinLabel)}</span>
-          <strong class="role-player-name" style="font-size:${r.nameFontSize}px">${esc(r.playerName)}</strong>
-        </div>
-      </article>`;
+      </div>`;
 
       bindRoleCanvasGesture(el('rolePlateCard'));
       el('previewEyebrow').textContent = '单人角色加载界面';
-      el('previewTitle').textContent = '角色加载铭牌（可直接拖拽/滚轮缩放立绘）';
+      el('previewTitle').textContent = window.innerWidth <= 960
+        ? '角色铭牌（单指拖立绘 · 双指缩放）'
+        : '角色加载铭牌（可直接拖拽/滚轮缩放立绘）';
       el('slotSummary').textContent = r.variant === 'full' ? '全身模式' : '半身模式';
     } else {
       const teamFont = resolveFontFamily(state.teamFontKey, state.teamCustomFont);
       const slotsToRender = state.showClosedTeamSlots ? state.teamSlots : state.teamSlots.filter((s) => s.enabled);
-      grid.innerHTML = slotsToRender
+      const slotCount = Math.max(1, slotsToRender.length);
+      currentStageNatW = slotCount * 282 + (slotCount - 1) * 8;
+      currentStageNatH = 643;
+      currentStageMaxScale = 0.95;
+      currentStageScale = computeStageFit(currentStageNatW, currentStageNatH, currentStageMaxScale);
+
+      const slotsHtml = slotsToRender
         .map((s) => {
           if (!s.enabled) {
             return `<article class="team-lobby-slot is-closed"><span class="closed-watermark">空槽位</span></article>`;
@@ -1255,6 +1382,12 @@
           </article>`;
         })
         .join('');
+
+      grid.innerHTML = `<div class="preview-scale-box" style="width:${(currentStageNatW * currentStageScale).toFixed(1)}px;height:${(currentStageNatH * currentStageScale).toFixed(1)}px">
+        <div class="preview-scale-inner" style="width:${currentStageNatW}px;height:${currentStageNatH}px;transform:scale(${currentStageScale.toFixed(4)})">
+          <div class="team-slots-row">${slotsHtml}</div>
+        </div>
+      </div>`;
 
       const enabledCount = state.teamSlots.filter((s) => s.enabled).length;
       el('previewEyebrow').textContent = '组队大厅 · 一至四人队列';
@@ -1596,6 +1729,11 @@
       const canvas = await buildExportCanvas();
       if (!canvas) return;
       const blob = await canvasToPngBlob(canvas);
+      // 微信 / 手机 QQ 内置浏览器会拦截 <a download>，自动弹出长按保存原图窗口
+      if (isInAppWebView()) {
+        openRawPngModal(canvas, blob);
+        return;
+      }
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.style.display = 'none';
@@ -2205,11 +2343,26 @@
   let shareCardTheme = null;
   let currentShareBlob = null;
   let currentShareUrl = '';
+  let shareModalIsRaw = false;
 
   function syncShareThemeButtons() {
     document.querySelectorAll('[data-share-theme]').forEach((b) => {
       b.classList.toggle('active', b.dataset.shareTheme === shareCardTheme);
     });
+  }
+
+  function applyPreviewImageSrc(imgEl, canvas, blob) {
+    if (currentShareUrl) {
+      URL.revokeObjectURL(currentShareUrl);
+      currentShareUrl = '';
+    }
+    if (isTouchPrimary() || isInAppWebView()) {
+      // 手机端与微信/QQ 内置浏览器使用 DataURL，确保长按图片原生菜单可 100% 识别保存或转发
+      imgEl.src = canvas.toDataURL('image/png');
+    } else {
+      currentShareUrl = URL.createObjectURL(blob);
+      imgEl.src = currentShareUrl;
+    }
   }
 
   async function refreshShareModalPreview() {
@@ -2230,10 +2383,8 @@
       }
       const blob = await canvasToPngBlob(canvas);
       currentShareBlob = blob;
-      if (currentShareUrl) URL.revokeObjectURL(currentShareUrl);
-      currentShareUrl = URL.createObjectURL(blob);
       if (imgEl) {
-        imgEl.src = currentShareUrl;
+        applyPreviewImageSrc(imgEl, canvas, blob);
         imgEl.hidden = false;
       }
       if (loadingEl) loadingEl.hidden = true;
@@ -2246,10 +2397,40 @@
   }
 
   function openShareModal() {
+    shareModalIsRaw = false;
     if (!shareCardTheme) shareCardTheme = state.theme;
     syncShareThemeButtons();
+    const titleEl = el('shareModalTitle');
+    const hintEl = el('shareFootHint');
+    const switchEl = document.querySelector('.share-theme-switch');
+    if (titleEl) titleEl.textContent = '铭牌搭配分享图预览';
+    if (hintEl) hintEl.textContent = '自动附上当前实验体、皮肤、边框、背景与头像官方名称（手机端可直接长按上方图片保存）';
+    if (switchEl) switchEl.hidden = false;
     if (el('shareBackdrop')) el('shareBackdrop').hidden = false;
     refreshShareModalPreview();
+  }
+
+  function openRawPngModal(canvas, blob) {
+    shareModalIsRaw = true;
+    currentShareBlob = blob;
+    const titleEl = el('shareModalTitle');
+    const hintEl = el('shareFootHint');
+    const switchEl = document.querySelector('.share-theme-switch');
+    const loadingEl = el('shareLoading');
+    const imgEl = el('sharePreviewImg');
+    const copyBtn = el('shareCopyBtn');
+    const dlBtn = el('shareDownloadBtn');
+    if (titleEl) titleEl.textContent = '高清透明原图（长按图片保存）';
+    if (hintEl) hintEl.textContent = '检测到微信/QQ内置浏览器，请直接长按上方高清透明 PNG 保存到手机相册或发送好友';
+    if (switchEl) switchEl.hidden = true;
+    if (loadingEl) loadingEl.hidden = true;
+    if (imgEl) {
+      applyPreviewImageSrc(imgEl, canvas, blob);
+      imgEl.hidden = false;
+    }
+    if (copyBtn) copyBtn.disabled = false;
+    if (dlBtn) dlBtn.disabled = false;
+    if (el('shareBackdrop')) el('shareBackdrop').hidden = false;
   }
 
   function syncThemeBtn() {
@@ -2299,32 +2480,50 @@
       try {
         if (navigator.clipboard && window.ClipboardItem) {
           await navigator.clipboard.write([new ClipboardItem({ 'image/png': currentShareBlob })]);
-          showToast('已复制搭配分享图，可直接粘贴到 QQ / 微信！');
+          showToast('已复制图片到剪贴板，可直接粘贴到 QQ / 微信！');
         } else {
-          showToast('当前浏览器不支持剪贴板写入图片，请点击右侧“保存搭配图 PNG”');
+          showToast('当前浏览器不支持剪贴板写入图片，请长按上方图片或点击“保存 PNG”');
         }
       } catch (err) {
-        handleExportError(err);
+        showToast('当前浏览器限制剪贴板写入，请长按上方图片或点击“保存 PNG”');
       }
     });
     el('shareDownloadBtn')?.addEventListener('click', () => {
       if (!currentShareBlob) return;
+      if (isInAppWebView()) {
+        showToast('请直接长按上方预览图片，选择“保存到手机”或“发送给朋友”');
+        return;
+      }
       const dlUrl = URL.createObjectURL(currentShareBlob);
       const a = document.createElement('a');
       a.style.display = 'none';
-      const suffix = state.mode === 'role'
-        ? `${characterDisplayName(state.role.characterKey) || '角色'}搭配单`
-        : '队伍大厅搭配单';
+      const suffix = shareModalIsRaw
+        ? (state.mode === 'role' ? '角色铭牌' : '队伍大厅')
+        : (state.mode === 'role' ? `${characterDisplayName(state.role.characterKey) || '角色'}搭配单` : '队伍大厅搭配单');
       a.download = `卢米亚铭牌工坊-${suffix}.png`;
       a.href = dlUrl;
       document.body.appendChild(a);
       a.click();
       setTimeout(() => a.remove(), 300);
       setTimeout(() => URL.revokeObjectURL(dlUrl), 60000);
-      showToast('搭配分享图 PNG 已保存');
+      showToast('高清 PNG 已保存');
     });
   }
-  window.addEventListener('resize', () => { if (state.mode === 'role') renderPreview(); });
+
+  if (el('mobilePreviewToggle') && el('workspaceMain')) {
+    el('mobilePreviewToggle').addEventListener('click', () => {
+      const ws = el('workspaceMain');
+      const expanded = ws.classList.toggle('is-mobile-expanded');
+      el('mobilePreviewToggle').textContent = expanded ? '恢复分屏' : '放大预览';
+      updateStageScaleOnly();
+    });
+  }
+
+  if (window.ResizeObserver && el('previewStage')) {
+    const ro = new ResizeObserver(() => updateStageScaleOnly());
+    ro.observe(el('previewStage'));
+  }
+  window.addEventListener('resize', () => updateStageScaleOnly());
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       if (el('shareBackdrop') && !el('shareBackdrop').hidden) {

@@ -49,17 +49,22 @@
 html, body { margin: 0; width: 100%; height: 100%; }
 body {
   height: 100dvh;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   color: var(--text);
   background: var(--bg);
   font-family: var(--ui);
   -webkit-font-smoothing: antialiased;
 }
-button, input, select { font: inherit; color: inherit; }
+button, input, select { font: inherit; color: inherit; touch-action: manipulation; }
+.desktop-only-inline { font-style: normal; }
+.btn-lbl-short { display: none; }
 
 /* ==================== 顶部导航栏 ==================== */
 .topbar {
   height: 62px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 28px;
@@ -187,7 +192,8 @@ button, input, select { font: inherit; color: inherit; }
 
 /* ==================== 主工作区与左侧预览台 ==================== */
 .workspace {
-  height: calc(100dvh - 62px);
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 432px;
 }
@@ -215,6 +221,8 @@ button, input, select { font: inherit; color: inherit; }
 }
 
 .preview-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 14px; }
+.preview-head-titles { min-width: 0; }
+.preview-head-right { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .eyebrow, .section-kicker { color: var(--teal); font-size: 10px; letter-spacing: 0.14em; font-weight: 800; }
 .preview-head h2 { margin: 4px 0 0; font-size: 20px; font-weight: 800; }
 .preview-meta {
@@ -229,6 +237,18 @@ button, input, select { font: inherit; color: inherit; }
   color: var(--muted);
   font-size: 11.5px;
   font-weight: 600;
+}
+.mobile-expand-btn {
+  display: none;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--teal);
+  border-radius: 999px;
+  background: var(--teal-soft);
+  color: var(--teal);
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
 }
 .live-dot {
   width: 7px;
@@ -245,12 +265,23 @@ button, input, select { font: inherit; color: inherit; }
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 16px;
-  overflow: auto;
+  padding: 12px;
+  overflow: hidden;
+}
+
+.preview-scale-box {
+  position: relative;
+  flex-shrink: 0;
+}
+.preview-scale-inner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: top left;
 }
 
 /* ==================== 模式 1：单人角色加载铭牌（严格 280:512 原生坐标系 = 306x560） ==================== */
-.preview-grid.is-role-mode {
+.preview-grid {
   display: flex;
   justify-content: center;
   align-items: center;
@@ -262,8 +293,8 @@ button, input, select { font: inherit; color: inherit; }
   position: relative;
   width: 306px;
   height: 560px;
-  transform-origin: center center;
   user-select: none;
+  touch-action: none;
   cursor: grab;
   filter: var(--plate-shadow);
 }
@@ -403,18 +434,19 @@ button, input, select { font: inherit; color: inherit; }
 .role-badge-trait.support { background: radial-gradient(circle, #4ade80 25%, #052e16 90%); }
 
 /* ==================== 模式 2：队伍大厅（前端几何去阴影黑缝 + S10 CNJ 实机框对齐） ==================== */
-.preview-grid.is-team-mode {
+.team-slots-row {
   display: flex;
   justify-content: center;
   align-items: center;
   gap: 8px;
-  height: min(600px, calc(100dvh - 200px));
+  height: 643px;
 }
 
 .team-lobby-slot {
   position: relative;
-  height: 100%;
-  aspect-ratio: 282 / 643;
+  width: 282px;
+  height: 643px;
+  flex-shrink: 0;
   background: transparent;
   filter: var(--plate-shadow);
   overflow: hidden;
@@ -1132,8 +1164,248 @@ input[type="range"] { width: 100%; accent-color: var(--teal); cursor: pointer; }
   margin-left: auto;
 }
 
-@media (max-width: 900px) {
-  .workspace { display: flex; flex-direction: column; }
-  .preview-area { flex: 0 0 46dvh; padding: 14px; }
-  .control-panel { flex: 1; border-left: 0; border-top: 1px solid var(--line-soft); }
+/* ==================== 移动端与窄屏全方位响应式适配 ==================== */
+@media (max-width: 960px) {
+  .topbar {
+    height: auto;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    gap: 7px 8px;
+  }
+  .brand-lockup {
+    order: 1;
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 8px;
+  }
+  .brand-mark {
+    width: 28px;
+    height: 28px;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  .brand-titles h1 {
+    font-size: 15px;
+    white-space: nowrap;
+  }
+  .brand-titles p {
+    display: none;
+  }
+  .version-button {
+    height: 24px;
+    padding: 0 8px;
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+  .mode-tabs {
+    order: 2;
+    padding: 3px;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+  .mode-tab {
+    height: 28px;
+    padding: 0 10px;
+    font-size: 12px;
+    gap: 4px;
+  }
+  .tab-index,
+  .desktop-only-inline {
+    display: none;
+  }
+  .topbar-actions {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+    display: flex;
+    gap: 6px;
+  }
+  .topbar-actions .icon-button {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+  }
+  .topbar-actions .secondary-button,
+  .topbar-actions .export-button {
+    flex: 1;
+    height: 34px;
+    padding: 0 8px;
+    justify-content: center;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .workspace {
+    display: flex;
+    flex-direction: column;
+  }
+  .preview-area {
+    flex: 0 0 35dvh;
+    padding: 8px 12px 6px;
+    transition: flex-basis 0.22s ease;
+  }
+  .workspace.is-mobile-expanded .preview-area {
+    flex: 0 0 62dvh;
+  }
+  .preview-head {
+    align-items: center;
+    gap: 8px;
+  }
+  .eyebrow,
+  .preview-footer,
+  .preview-status-text,
+  .meta-divider {
+    display: none;
+  }
+  .preview-head h2 {
+    margin: 0;
+    font-size: 13.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .preview-meta {
+    padding: 3px 9px;
+    font-size: 11px;
+    gap: 6px;
+  }
+  .mobile-expand-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 26px;
+    padding: 0 9px;
+    font-size: 11px;
+  }
+  .preview-stage {
+    padding: 6px 4px;
+  }
+
+  .control-panel {
+    flex: 1;
+    min-height: 0;
+    border-left: 0;
+    border-top: 1px solid var(--line-soft);
+  }
+  .panel-scroll {
+    padding: 12px 12px 14px;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  .asset-grid {
+    max-height: 206px;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* 防止 iOS Safari 点击输入框自动放大页面 */
+  input[type="text"],
+  input[type="search"],
+  select {
+    font-size: 16px;
+    height: 38px;
+  }
+  select.trait-select {
+    font-size: 14px;
+    height: 34px;
+  }
+  input[type="color"] {
+    width: 38px;
+    height: 38px;
+  }
+  input[type="range"] {
+    height: 26px;
+  }
+  .slot-tab,
+  .skin-toggle button {
+    height: 36px;
+    font-size: 12.5px;
+  }
+  .mini-reset-btn {
+    height: 29px;
+    padding: 0 9px;
+    font-size: 11px;
+  }
+  .mini-reset-hint {
+    display: none;
+  }
+  .picker-collapse-btn {
+    height: 26px;
+    padding: 0 10px;
+    font-size: 11px;
+  }
+  .panel-bottom {
+    padding: 9px 12px calc(9px + env(safe-area-inset-bottom, 0px));
+  }
+  .toast {
+    width: max-content;
+    max-width: calc(100vw - 28px);
+    text-align: center;
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (max-width: 560px) {
+  .version-extra {
+    display: none;
+  }
+  .btn-lbl-full {
+    display: none;
+  }
+  .btn-lbl-short {
+    display: inline;
+  }
+  .field-inline {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .font-bar.has-custom {
+    grid-template-columns: 1fr;
+  }
+  .position-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .inline-size-sync {
+    flex-wrap: wrap;
+  }
+  .sync-pill-btn {
+    height: 32px;
+  }
+  .modal-backdrop {
+    padding: 10px;
+  }
+  .share-modal,
+  .changelog-modal {
+    width: 100%;
+    max-height: 90dvh;
+  }
+  .changelog-head {
+    padding: 11px 13px;
+  }
+  .changelog-head h3 {
+    font-size: 14px;
+  }
+  .share-preview-wrap {
+    padding: 10px;
+    min-height: 190px;
+  }
+  .share-foot {
+    padding: 10px 13px calc(10px + env(safe-area-inset-bottom, 0px));
+    gap: 8px;
+  }
+  .share-foot-hint {
+    width: 100%;
+    font-size: 11px;
+  }
+  .share-foot-actions {
+    width: 100%;
+    margin-left: 0;
+  }
+  .share-foot-actions .secondary-button,
+  .share-foot-actions .export-button {
+    flex: 1;
+    justify-content: center;
+    height: 38px;
+  }
 }

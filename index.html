@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
@@ -11,25 +11,25 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Sans+SC:wght@500;700;900&family=Noto+Serif+SC:wght@600;700;900&family=Orbitron:wght@700;800&family=ZCOOL+KuaiLe&family=ZCOOL+XiaoWei&display=swap" media="print" onload="this.media='all'">
-  <link rel="stylesheet" href="styles.css?v=1.1.3">
+  <link rel="stylesheet" href="styles.css?v=1.1.4">
 </head>
 <body data-theme="light">
   <header class="topbar">
     <div class="brand-lockup">
       <div class="brand-mark" aria-hidden="true">铭</div>
-      <div>
+      <div class="brand-titles">
         <h1>卢米亚铭牌工坊</h1>
         <p>永恒轮回 · 角色铭牌与大厅搭配</p>
       </div>
       <button class="version-button" id="changelogButton" type="button" title="查看版本更新日志">
-        <span id="versionLabel">v1.1.3</span>
-        <span>· 更新日志</span>
+        <span id="versionLabel">v1.1.4</span>
+        <span class="version-extra">· 更新日志</span>
       </button>
     </div>
 
     <nav class="mode-tabs" aria-label="编辑模式">
       <button class="mode-tab active" data-mode="role" type="button">
-        <span class="tab-index">01</span><span>角色铭牌（单人）</span>
+        <span class="tab-index">01</span><span>角色铭牌<em class="desktop-only-inline">（单人）</em></span>
       </button>
       <button class="mode-tab" data-mode="team" type="button">
         <span class="tab-index">02</span><span>队伍大厅</span>
@@ -38,24 +38,27 @@
 
     <div class="topbar-actions">
       <button class="icon-button" id="themeToggle" type="button" title="切换明暗主题" aria-label="切换明暗主题">☾</button>
-      <button class="secondary-button share-trigger-btn" id="shareButton" type="button" title="一键生成包含边框、头像、背景、皮肤名称清单的搭配分享图">✦ 生成搭配图</button>
-      <button class="secondary-button" id="copyButton" type="button" title="复制纯铭牌高清透明 PNG 到剪贴板">复制图片</button>
-      <button class="export-button" id="exportButton" type="button"><span aria-hidden="true">↓</span> 导出高清 PNG</button>
+      <button class="secondary-button share-trigger-btn" id="shareButton" type="button" title="一键生成包含边框、头像、背景、皮肤名称清单的搭配分享图">✦ <span class="btn-lbl-full">生成搭配图</span><span class="btn-lbl-short">搭配图</span></button>
+      <button class="secondary-button" id="copyButton" type="button" title="复制纯铭牌高清透明 PNG 到剪贴板"><span class="btn-lbl-full">复制图片</span><span class="btn-lbl-short">复制</span></button>
+      <button class="export-button" id="exportButton" type="button"><span aria-hidden="true">↓</span> <span class="btn-lbl-full">导出高清 PNG</span><span class="btn-lbl-short">导出 PNG</span></button>
     </div>
   </header>
 
-  <main class="workspace">
+  <main class="workspace" id="workspaceMain">
     <section class="preview-area">
       <div class="preview-head">
-        <div>
+        <div class="preview-head-titles">
           <span class="eyebrow" id="previewEyebrow">单人角色加载界面</span>
           <h2 id="previewTitle">角色加载铭牌</h2>
         </div>
-        <div class="preview-meta">
-          <span class="live-dot"></span>
-          <span id="previewStatus">1:1 实机比例预览</span>
-          <span class="meta-divider"></span>
-          <span id="slotSummary">半身模式</span>
+        <div class="preview-head-right">
+          <div class="preview-meta">
+            <span class="live-dot"></span>
+            <span class="preview-status-text" id="previewStatus">1:1 实机比例预览</span>
+            <span class="meta-divider"></span>
+            <span id="slotSummary">半身模式</span>
+          </div>
+          <button class="mobile-expand-btn" id="mobilePreviewToggle" type="button">放大预览</button>
         </div>
       </div>
 
@@ -134,17 +137,17 @@
         <img id="sharePreviewImg" alt="铭牌搭配分享图预览" hidden>
       </div>
       <div class="share-foot">
-        <span class="share-foot-hint">自动附上当前所用实验体、皮肤、铭牌边框、背景板与头像官方名称</span>
+        <span class="share-foot-hint" id="shareFootHint">自动附上当前实验体、皮肤、边框、背景与头像官方名称（手机端可直接长按上方图片保存）</span>
         <div class="share-foot-actions">
-          <button type="button" class="secondary-button" id="shareCopyBtn">复制搭配图（粘贴 QQ/微信）</button>
-          <button type="button" class="export-button" id="shareDownloadBtn"><span aria-hidden="true">↓</span> 保存搭配图 PNG</button>
+          <button type="button" class="secondary-button" id="shareCopyBtn">复制图片</button>
+          <button type="button" class="export-button" id="shareDownloadBtn"><span aria-hidden="true">↓</span> 保存 PNG</button>
         </div>
       </div>
     </div>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="extracted_assets/assets.js?v=1.1.3"></script>
-  <script src="app.js?v=1.1.3"></script>
+  <script src="extracted_assets/assets.js?v=1.1.4"></script>
+  <script src="app.js?v=1.1.4"></script>
 </body>
 </html>
