@@ -1,8 +1,16 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.1.0';
+  const APP_VERSION = '1.1.1';
   const FALLBACK_CHANGELOG = [
+    {
+      version: '1.1.1',
+      date: '2026-11-25',
+      items: [
+        '修复单人角色半身与全身立绘默认中心点偏低导致人物下沉「凹进去」及左肩露边的问题（半身校准至 Y=38.0%、宽 96.0%，全身校准至 Y=42.0%、宽 84.0%），恢复挺拔饱满实机站位',
+        '修复角色微调面板中「半身立绘偏移 / 半身立绘缩放」标题文字被两端对齐撑开间距的排版问题',
+      ],
+    },
     {
       version: '1.1.0',
       date: '2026-11-25',
@@ -220,14 +228,14 @@
   const defaultFull = findAsset(skinsFor(defaultCharKey, 'full'), isDefaultSkinFile);
 
   // ==================== 280x512 (306x560) 实机加载界面像素级基准原点 ====================
-  // 半身立绘默认采用 90% 黄金缩放水平（宽 94.0%，中心 X=51.5%、Y=46.0%），预览与导出 1:1 完全一致
+  // 整卡 100% 高度参考系下校准：半身立绘中心 X=51.1%、Y=38.0%、宽 96.0%（约 90% 黄金比例且上提贴合实机不凹陷），预览与导出 1:1 完全一致
   const ROLE_BASE = {
-    halfX: 51.5,
-    halfY: 46.0,
-    halfWidth: 94.0,
-    fullX: 51.0,
-    fullY: 52.0,
-    fullWidth: 82.0,
+    halfX: 51.1,
+    halfY: 38.0,
+    halfWidth: 96.0,
+    fullX: 51.1,
+    fullY: 42.0,
+    fullWidth: 84.0,
     avatarX: 18.4,
     avatarY: 75.8,
     avatarWidth: 19.3,
@@ -320,9 +328,10 @@
     ...TEAM_SLOT_DEFAULTS,
   });
 
-  // 升级版本号至 v10 (v1.1.0)：默认实验体切回俞岷，半身立绘归零基准升级为 90% 比例水平
-  const STORAGE_KEY = 'er-plate-studio-calibrated-v10';
+  // 升级版本号至 v11 (v1.1.1)：在整卡 1:1 参考系下重新上提半身与全身立绘基准原点，消除立绘下沉凹陷问题
+  const STORAGE_KEY = 'er-plate-studio-calibrated-v11';
   const LEGACY_KEYS = [
+    'er-plate-studio-calibrated-v10',
     'er-plate-studio-calibrated-v9',
     'er-plate-studio-calibrated-v8',
     'er-plate-studio-calibrated-v7',
@@ -352,17 +361,22 @@
       teamSlots: [makeTeamSlot(true, 0), makeTeamSlot(true, 1), makeTeamSlot(true, 2), makeTeamSlot(false, 3)],
     };
     try {
-      const rawV9 = localStorage.getItem(STORAGE_KEY);
-      const isMigrating = !rawV9;
+      const rawCurrent = localStorage.getItem(STORAGE_KEY);
+      const isMigrating = !rawCurrent;
       let legacyRaw = null;
+      let migratedFromKey = '';
       if (isMigrating) {
         for (const k of LEGACY_KEYS) {
           legacyRaw = localStorage.getItem(k);
-          if (legacyRaw) break;
+          if (legacyRaw) {
+            migratedFromKey = k;
+            break;
+          }
         }
       }
-      const saved = JSON.parse(rawV9 || legacyRaw || 'null');
+      const saved = JSON.parse(rawCurrent || legacyRaw || 'null');
       if (!saved || typeof saved !== 'object') return base;
+      const fromCalibratedRecent = migratedFromKey === 'er-plate-studio-calibrated-v10' || migratedFromKey === 'er-plate-studio-calibrated-v9';
       base.mode = saved.mode === 'team' ? 'team' : 'role';
       base.showClosedTeamSlots = saved.showClosedTeamSlots !== false;
       base.selectedTeamSlot = num(saved.selectedTeamSlot, 0, 0, 3);
@@ -376,6 +390,9 @@
             'playerName', 'fontKey', 'customFont', 'character', 'characterKey', 'variant',
             'halfSkin', 'fullSkin', 'skin', 'skinLabel', 'skinColor',
             'background', 'border', 'avatar', 'showBadges', 'primaryTrait', 'subTrait',
+            ...(fromCalibratedRecent
+              ? ['nameFontSize', 'skinFontSize', 'textOffsetX', 'textOffsetY', 'avatarOffsetX', 'avatarOffsetY', 'avatarScale']
+              : []),
           ];
           keepKeys.forEach((k) => {
             if (saved.role[k] !== undefined) base.role[k] = saved.role[k];
@@ -431,7 +448,7 @@
         };
         base.teamSlots = base.teamSlots.map((s, i) => {
           const prev = saved.teamSlots[i] || {};
-          const merged = isMigrating
+          const merged = isMigrating && !fromCalibratedRecent
             ? {
                 ...s,
                 enabled: prev.enabled !== undefined ? prev.enabled : s.enabled,
@@ -713,9 +730,9 @@
           <label class="range-field"><span>文字水平偏移 X <output id="textOffXVal">${fmtSigned(r.textOffsetX)}</output></span><input id="textOffX" type="range" min="-20" max="15" step="0.5" value="${r.textOffsetX}"></label>
           <label class="range-field"><span>文字垂直偏移 Y <output id="textOffYVal">${fmtSigned(r.textOffsetY)}</output></span><input id="textOffY" type="range" min="-20" max="20" step="0.5" value="${r.textOffsetY}"></label>
 
-          <label class="range-field"><span><b id="artModeLblX">${r.variant === 'full' ? '全身' : '半身'}</b>立绘偏移 X <output id="artXVal">${fmtSigned(tf.x)}</output></span><input id="artX" type="range" min="-45" max="45" step="0.5" value="${tf.x}"></label>
-          <label class="range-field"><span><b id="artModeLblY">${r.variant === 'full' ? '全身' : '半身'}</b>立绘偏移 Y <output id="artYVal">${fmtSigned(tf.y)}</output></span><input id="artY" type="range" min="-45" max="45" step="0.5" value="${tf.y}"></label>
-          <label class="range-field range-full"><span><b id="artModeLblS">${r.variant === 'full' ? '全身' : '半身'}</b>立绘缩放 <output id="artScaleVal">${tf.scale}%</output></span><input id="artScale" type="range" min="40" max="160" step="1" value="${tf.scale}"></label>
+          <label class="range-field"><span><em id="artModeLblX" style="font-style:normal">${r.variant === 'full' ? '全身' : '半身'}立绘偏移 X</em><output id="artXVal">${fmtSigned(tf.x)}</output></span><input id="artX" type="range" min="-45" max="45" step="0.5" value="${tf.x}"></label>
+          <label class="range-field"><span><em id="artModeLblY" style="font-style:normal">${r.variant === 'full' ? '全身' : '半身'}立绘偏移 Y</em><output id="artYVal">${fmtSigned(tf.y)}</output></span><input id="artY" type="range" min="-45" max="45" step="0.5" value="${tf.y}"></label>
+          <label class="range-field range-full"><span><em id="artModeLblS" style="font-style:normal">${r.variant === 'full' ? '全身' : '半身'}立绘缩放</em><output id="artScaleVal">${tf.scale}%</output></span><input id="artScale" type="range" min="40" max="160" step="1" value="${tf.scale}"></label>
 
           <label class="range-field"><span>头像水平偏移 X <output id="roleAvXVal">${fmtSigned(r.avatarOffsetX)}</output></span><input id="roleAvX" type="range" min="-15" max="35" step="0.5" value="${r.avatarOffsetX}"></label>
           <label class="range-field"><span>头像垂直偏移 Y <output id="roleAvYVal">${fmtSigned(r.avatarOffsetY)}</output></span><input id="roleAvY" type="range" min="-20" max="20" step="0.5" value="${r.avatarOffsetY}"></label>
@@ -785,9 +802,9 @@
     const syncSliderInputs = () => {
       const curTf = currentArtTransform();
       const modeWord = r.variant === 'full' ? '全身' : '半身';
-      el('artModeLblX').textContent = modeWord;
-      el('artModeLblY').textContent = modeWord;
-      el('artModeLblS').textContent = modeWord;
+      el('artModeLblX').textContent = `${modeWord}立绘偏移 X`;
+      el('artModeLblY').textContent = `${modeWord}立绘偏移 Y`;
+      el('artModeLblS').textContent = `${modeWord}立绘缩放`;
       el('nameFs').value = r.nameFontSize; el('nameFsVal').textContent = `${r.nameFontSize}px`;
       el('skinFs').value = r.skinFontSize; el('skinFsVal').textContent = `${r.skinFontSize}px`;
       el('textOffX').value = r.textOffsetX; el('textOffXVal').textContent = fmtSigned(r.textOffsetX);
@@ -1374,7 +1391,7 @@
       if (skin) {
         ctx.save();
         ctx.beginPath();
-        ctx.rect(0, 0, W, H * 0.74);
+        ctx.rect(0, 0, W, H * 0.78);
         ctx.clip();
         const targetW = W * (m.artWidth / 100);
         const targetH = targetW * (skin.naturalHeight / skin.naturalWidth);
