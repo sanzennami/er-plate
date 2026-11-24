@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f1f5f9">
+  <title>卢米亚铭牌工坊</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Sans+SC:wght@500;700;900&family=Noto+Serif+SC:wght@600;700;900&family=Orbitron:wght@700;800&family=ZCOOL+KuaiLe&family=ZCOOL+XiaoWei&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-theme="light">
+  <header class="topbar">
+    <div class="brand-lockup">
+      <div class="brand-mark" aria-hidden="true">铭</div>
+      <div>
+        <h1>卢米亚铭牌工坊</h1>
+        <p>永恒轮回 · 角色铭牌与大厅搭配</p>
+      </div>
+    </div>
+
+    <nav class="mode-tabs" aria-label="编辑模式">
+      <button class="mode-tab active" data-mode="role" type="button">
+        <span class="tab-index">01</span><span>角色铭牌（单人）</span>
+      </button>
+      <button class="mode-tab" data-mode="team" type="button">
+        <span class="tab-index">02</span><span>队伍大厅</span>
+      </button>
+    </nav>
+
+    <div class="topbar-actions">
+      <button class="icon-button" id="themeToggle" type="button" title="切换明暗主题" aria-label="切换明暗主题">☾</button>
+      <button class="export-button" id="exportButton" type="button"><span aria-hidden="true">↓</span> 导出高清图片</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <section class="preview-area">
+      <div class="preview-head">
+        <div>
+          <span class="eyebrow" id="previewEyebrow">单人角色加载界面</span>
+          <h2 id="previewTitle">角色加载铭牌</h2>
+        </div>
+        <div class="preview-meta">
+          <span class="live-dot"></span>
+          <span id="previewStatus">1:1 实机比例预览</span>
+          <span class="meta-divider"></span>
+          <span id="slotSummary">半身模式</span>
+        </div>
+      </div>
+
+      <div class="preview-stage" id="previewStage">
+        <div class="preview-grid" id="previewGrid"></div>
+      </div>
+
+      <div class="preview-footer">
+        <div class="footer-note">
+          <span class="footer-marker">+</span>
+          <span>本地实时合成，边框外溢装饰完整保留，导出高清 PNG 支持透明通道。</span>
+        </div>
+        <div class="key-hint"><kbd>1</kbd> 角色铭牌 <kbd>2</kbd> 队伍大厅</div>
+      </div>
+    </section>
+
+    <aside class="control-panel">
+      <div class="panel-scroll">
+        <!-- 单人角色铭牌编辑区 -->
+        <section class="editor-section" id="rolePanel">
+          <div class="section-heading">
+            <div>
+              <span class="section-kicker">加载界面铭牌</span>
+              <h3>角色铭牌搭配</h3>
+            </div>
+            <span class="section-count">单人</span>
+          </div>
+          <div id="roleEditor"></div>
+        </section>
+
+        <!-- 队伍大厅编辑区 -->
+        <section class="editor-section" id="teamPanel" hidden>
+          <div class="section-heading">
+            <div>
+              <span class="section-kicker">组队准备界面</span>
+              <h3>队伍大厅配置</h3>
+            </div>
+            <span class="section-count" id="teamCount">03/04</span>
+          </div>
+          <div class="slot-tabs" id="teamSlotTabs"></div>
+          <div id="teamEditor"></div>
+        </section>
+      </div>
+
+      <div class="panel-bottom">
+        <button class="reset-button" id="resetButton" type="button">↺ 重置全套初始方案</button>
+        <span class="asset-count" id="assetCount">素材载入中</span>
+      </div>
+    </aside>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="extracted_assets/assets.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+/extracted_assets/*/*.webp
+  Cache-Control: public, max-age=2592000
+
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/app.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/styles.css
+  Cache-Control: public, max-age=0, must-revalidate
+
+/extracted_assets/assets.js
+  Cache-Control: public, max-age=0, must-revalidate

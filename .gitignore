@@ -1,0 +1,30 @@
+# 屏蔽本地解包脚本、批处理、旧版备份与原始大包（仅上传纯净前端与 WebP 素材）
+*.py
+*.ps1
+*.bat
+*.cmd
+*.7z
+*.zip
+*.rar
+*.txt
+*.gif
+/*.png
+/assets.js
+
+# 本地缓存与备份目录
+__pycache__/
+_png_backup/
+extracted_assets/_temp_cache/
+extracted_assets/*.json
+
+# 旧版目录
+CadetReconcileBackup_*/
+CharactER/
+Full皮肤/
+Half皮肤/
+人物背景/
+头像/
+实验体头像/
+旧版前端/
+边框/
+队伍格背景/
