@@ -1,8 +1,15 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.1.2';
+  const APP_VERSION = '1.1.3';
   const FALLBACK_CHANGELOG = [
+    {
+      version: '1.1.3',
+      date: '2026-11-25',
+      items: [
+        '修复「✦ 生成搭配图」时左侧角色铭牌 / 上方队伍大厅因 Canvas 宽高属性读取兼容问题未绘制导致显示空白的 Bug，并放大右侧边框缩略图细节局部',
+      ],
+    },
     {
       version: '1.1.2',
       date: '2026-11-25',
@@ -1301,18 +1308,22 @@
   }
 
   function drawCover(ctx, img, x, y, w, h) {
-    if (!img || !img.naturalWidth || !img.naturalHeight) return;
-    const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
-    const dw = img.naturalWidth * scale;
-    const dh = img.naturalHeight * scale;
+    const iw = img && (img.naturalWidth || img.width);
+    const ih = img && (img.naturalHeight || img.height);
+    if (!iw || !ih) return;
+    const scale = Math.max(w / iw, h / ih);
+    const dw = iw * scale;
+    const dh = ih * scale;
     ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
   }
 
   function drawContain(ctx, img, x, y, w, h) {
-    if (!img || !img.naturalWidth || !img.naturalHeight) return;
-    const scale = Math.min(w / img.naturalWidth, h / img.naturalHeight);
-    const dw = img.naturalWidth * scale;
-    const dh = img.naturalHeight * scale;
+    const iw = img && (img.naturalWidth || img.width);
+    const ih = img && (img.naturalHeight || img.height);
+    if (!iw || !ih) return;
+    const scale = Math.min(w / iw, h / ih);
+    const dw = iw * scale;
+    const dh = ih * scale;
     ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
   }
 
@@ -1662,13 +1673,22 @@
     ctx.fillStyle = backing;
     ctx.fill();
     ctx.clip();
-    if (img && img.naturalWidth && img.naturalHeight) {
-      if (fitMode === 'contain') {
+    const iw = img && (img.naturalWidth || img.width);
+    const ih = img && (img.naturalHeight || img.height);
+    if (iw && ih) {
+      if (fitMode === 'border') {
+        const sy = ih * 0.44;
+        const sH = ih * 0.56;
+        const scale = Math.min((w - 6) / iw, (h - 6) / sH);
+        const dw = iw * scale;
+        const dh = sH * scale;
+        ctx.drawImage(img, 0, sy, iw, sH, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+      } else if (fitMode === 'contain') {
         drawContain(ctx, img, x + 4, y + 4, w - 8, h - 8);
       } else if (fitMode === 'teamBg') {
-        const sx = img.naturalWidth * (8 / 322);
-        const sW = img.naturalWidth * (282 / 322);
-        const sH = img.naturalHeight * (643 / 684);
+        const sx = iw * (8 / 322);
+        const sW = iw * (282 / 322);
+        const sH = ih * (643 / 684);
         const scale = Math.max(w / sW, h / sH);
         const dw = sW * scale;
         const dh = sH * scale;
@@ -1899,7 +1919,7 @@
           name: prettyItemName(r.border, '默认无边框'),
           desc: '加载界面外框装饰',
           img: borderThumb,
-          fit: 'contain',
+          fit: 'border',
         },
         {
           tag: '人物背景板',
