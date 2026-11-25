@@ -1,8 +1,18 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.1.4';
+  const APP_VERSION = '1.1.5';
   const FALLBACK_CHANGELOG = [
+    {
+      version: '1.1.5',
+      date: '2026-11-25',
+      items: [
+        '精准校准全部 150 张队伍大厅背景逐图边缘裁切框（消除部分 S11/三周年/皮肤背景顶部 4～6px 与左侧 2px 残留黑边），并为半透明「默认队伍格背景」补齐深色底衬',
+        '补全最后 18 枚早期排位段位标志中文名，全库 2,740 项素材中文命中率达 100.0%',
+        '角色铭牌左上武器图标升级为纯白矢量双剑（修复手机 iOS/Android 变成彩色 Emoji ⚔️ 的问题），新增「左下头像」显隐开关与超长皮肤名自动缩字防撞头像机制',
+        '队伍大厅支持直接点击预览卡片秒切编辑号位，并补齐导出图立绘/头像立体阴影与离屏解码缓存加速',
+      ],
+    },
     {
       version: '1.1.4',
       date: '2026-11-25',
@@ -79,9 +89,52 @@
     Object.values(EXTRACTED_RAW).some((arr) => Array.isArray(arr) && arr.length > 0)
   );
   const RAW_ASSET = (USE_EXTRACTED ? EXTRACTED_RAW : window.ER_ASSETS) || {};
-  const META = (USE_EXTRACTED && window.ER_ASSET_META) || { baseDir: 'extracted_assets', labels: {}, characters: {} };
+  const META = (USE_EXTRACTED && window.ER_ASSET_META) || { baseDir: 'extracted_assets', labels: {}, characters: {}, teamBgCrops: {} };
   const LABELS = META.labels || {};
   const CHAR_META = META.characters || {};
+  const TEAM_BG_CROPS = META.teamBgCrops || {};
+
+  function getTeamBgCrop(file, fallbackW = 322, fallbackH = 684) {
+    const rec = file && TEAM_BG_CROPS[file];
+    if (Array.isArray(rec) && rec.length >= 6) {
+      return { x0: rec[0], y0: rec[1], cw: rec[2], ch: rec[3], tw: rec[4], th: rec[5] };
+    }
+    return {
+      x0: fallbackW * (8 / 322),
+      y0: fallbackH * (2 / 684),
+      cw: fallbackW * (282 / 322),
+      ch: fallbackH * (640 / 684),
+      tw: fallbackW,
+      th: fallbackH,
+    };
+  }
+
+  function teamBgInlineStyle(file) {
+    const c = getTeamBgCrop(file);
+    const leftPct = -((c.x0 / c.cw) * 100);
+    const topPct = -((c.y0 / c.ch) * 100);
+    const widthPct = (c.tw / c.cw) * 100;
+    const heightPct = (c.th / c.ch) * 100;
+    return `left:${leftPct.toFixed(3)}%;top:${topPct.toFixed(3)}%;width:${widthPct.toFixed(3)}%;height:${heightPct.toFixed(3)}%;`;
+  }
+
+  let _measureCtx = null;
+  function measureFitFontPx(text, maxPxWidth, basePx, minPx, weight, fontFamily) {
+    const str = String(text || '');
+    if (!str || maxPxWidth <= 10) return basePx;
+    if (!_measureCtx) {
+      _measureCtx = document.createElement('canvas').getContext('2d');
+    }
+    let px = basePx;
+    _measureCtx.font = `${weight} ${px}px ${fontFamily}`;
+    while (px > minPx && _measureCtx.measureText(str).width > maxPxWidth) {
+      px = Math.max(minPx, Math.round((px - 0.5) * 10) / 10);
+      _measureCtx.font = `${weight} ${px}px ${fontFamily}`;
+    }
+    return px;
+  }
+
+  const WEAPON_ICON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"/><path d="M13 19l6-6"/><path d="M16 16l4 4"/><path d="M19 21l2-2"/><path d="M9.5 17.5L21 6V3h-3L6.5 14.5"/><path d="M11 19l-6-6"/><path d="M8 16l-4 4"/><path d="M5 21l-2-2"/></svg>`;
 
   const FOLDERS = USE_EXTRACTED
     ? {
@@ -332,6 +385,7 @@
     skinFontSize: ROLE_DEFAULTS.skinFontSize,
     nameFontSize: ROLE_DEFAULTS.nameFontSize,
     showBadges: true,
+    showAvatar: true,
     primaryTrait: 'havoc',
     subTrait: 'chaos',
   });
@@ -413,7 +467,7 @@
           const keepKeys = [
             'playerName', 'fontKey', 'customFont', 'character', 'characterKey', 'variant',
             'halfSkin', 'fullSkin', 'skin', 'skinLabel', 'skinColor',
-            'background', 'border', 'avatar', 'showBadges', 'primaryTrait', 'subTrait',
+            'background', 'border', 'avatar', 'showBadges', 'showAvatar', 'primaryTrait', 'subTrait',
             ...(fromCalibratedRecent
               ? ['nameFontSize', 'skinFontSize', 'textOffsetX', 'textOffsetY', 'avatarOffsetX', 'avatarOffsetY', 'avatarScale']
               : []),
@@ -765,10 +819,16 @@
       </details>
 
       <div class="editor-row-between">
-        <label class="switch-label">
-          <input id="roleShowBadges" type="checkbox" ${r.showBadges ? 'checked' : ''}>
-          左上武器/潜能图标
-        </label>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <label class="switch-label">
+            <input id="roleShowBadges" type="checkbox" ${r.showBadges ? 'checked' : ''}>
+            左上武器/潜能
+          </label>
+          <label class="switch-label">
+            <input id="roleShowAvatar" type="checkbox" ${r.showAvatar !== false ? 'checked' : ''}>
+            左下头像
+          </label>
+        </div>
         <div class="trait-select-group">
           <select id="rolePrimaryTrait" class="trait-select" aria-label="主潜能">
             <option value="havoc" ${r.primaryTrait === 'havoc' ? 'selected' : ''}>破坏红</option>
@@ -807,6 +867,7 @@
     el('roleSkinLabel').addEventListener('input', (e) => { r.skinLabel = e.target.value; renderPreview(); });
     el('roleSkinColor').addEventListener('input', (e) => { r.skinColor = e.target.value; renderPreview(); });
     el('roleShowBadges').addEventListener('change', (e) => { r.showBadges = e.target.checked; renderPreview(); });
+    el('roleShowAvatar').addEventListener('change', (e) => { r.showAvatar = e.target.checked; renderPreview(); });
     el('rolePrimaryTrait').addEventListener('change', (e) => { r.primaryTrait = e.target.value; renderPreview(); });
     el('roleSubTrait').addEventListener('change', (e) => { r.subTrait = e.target.value; renderPreview(); });
 
@@ -941,12 +1002,17 @@
 
     box.querySelectorAll('[data-variant]').forEach((btn) =>
       btn.addEventListener('click', () => {
+        const prevAutoTitle = displaySkinTitle(r.characterKey, r.skin, r.variant);
+        const hadCustomTitle = Boolean(r.skinLabel && r.skinLabel !== prevAutoTitle);
         r.variant = btn.dataset.variant;
         box.querySelectorAll('[data-variant]').forEach((b) => b.classList.toggle('active', b.dataset.variant === r.variant));
         r.skin = r.variant === 'full' ? r.fullSkin : r.halfSkin;
         if (!r.skin) r.skin = skinsFor(r.characterKey, r.variant)[0] || '';
-        r.skinLabel = displaySkinTitle(r.characterKey, r.skin, r.variant);
-        el('roleSkinLabel').value = r.skinLabel;
+        const nextAutoTitle = displaySkinTitle(r.characterKey, r.skin, r.variant);
+        if (!hadCustomTitle || nextAutoTitle !== prevAutoTitle) {
+          r.skinLabel = nextAutoTitle;
+          el('roleSkinLabel').value = r.skinLabel;
+        }
         syncSliderInputs();
         if (skinPickerCtrl) {
           skinPickerCtrl.setFolderAndTitle(
@@ -1328,6 +1394,13 @@
       currentStageMaxScale = 1.08;
       currentStageScale = computeStageFit(currentStageNatW, currentStageNatH, currentStageMaxScale);
 
+      const showAv = r.showAvatar !== false && Boolean(r.avatar);
+      const textRightX306 = 306 * (1 - m.textRight / 100);
+      const avRightX306 = showAv ? 306 * ((m.avatarX + m.avatarWidth / 2) / 100) + 8 : 306 * 0.13;
+      const maxRoleTextW = Math.max(76, textRightX306 - avRightX306);
+      const effSkinFs = measureFitFontPx(r.skinLabel, maxRoleTextW, r.skinFontSize, 10, 700, roleFont);
+      const effNameFs = measureFitFontPx(r.playerName, maxRoleTextW, r.nameFontSize, 11, 800, roleFont);
+
       grid.innerHTML = `<div class="preview-scale-box" style="width:${(306 * currentStageScale).toFixed(1)}px;height:${(560 * currentStageScale).toFixed(1)}px">
         <div class="preview-scale-inner" style="width:306px;height:560px;transform:scale(${currentStageScale.toFixed(4)})">
           <article class="role-plate-card" id="rolePlateCard">
@@ -1337,15 +1410,15 @@
               ${!r.border ? '<div class="role-nameplate-bar"></div>' : ''}
             </div>
             ${r.showBadges ? `<div class="role-side-badges">
-              <span class="role-badge-weapon">⚔</span>
+              <span class="role-badge-weapon">${WEAPON_ICON_SVG}</span>
               <span class="role-badge-trait ${esc(r.primaryTrait)}"></span>
               <span class="role-badge-trait ${esc(r.subTrait)}"></span>
             </div>` : ''}
             ${r.border ? `<img class="role-border-img" style="${borderFitStyle}" src="${assetPath(FOLDERS.borders, r.border)}" alt="">` : ''}
-            ${r.avatar ? `<img class="role-player-avatar" style="left:${m.avatarX.toFixed(2)}%;top:${m.avatarY.toFixed(2)}%;width:${m.avatarWidth.toFixed(2)}%" src="${assetPath(FOLDERS.avatars, r.avatar)}" alt="">` : ''}
-            <div class="role-text-group" style="right:${m.textRight.toFixed(2)}%;top:${m.textY.toFixed(2)}%;font-family:${esc(roleFont)}">
-              <span class="role-skin-title" style="color:${esc(r.skinColor || '#78d9ff')};font-size:${r.skinFontSize}px">${esc(r.skinLabel)}</span>
-              <strong class="role-player-name" style="font-size:${r.nameFontSize}px">${esc(r.playerName)}</strong>
+            ${showAv ? `<img class="role-player-avatar" style="left:${m.avatarX.toFixed(2)}%;top:${m.avatarY.toFixed(2)}%;width:${m.avatarWidth.toFixed(2)}%" src="${assetPath(FOLDERS.avatars, r.avatar)}" alt="">` : ''}
+            <div class="role-text-group" style="right:${m.textRight.toFixed(2)}%;top:${m.textY.toFixed(2)}%;max-width:${maxRoleTextW.toFixed(1)}px;font-family:${esc(roleFont)}">
+              <span class="role-skin-title" style="color:${esc(r.skinColor || '#78d9ff')};font-size:${effSkinFs}px">${esc(r.skinLabel)}</span>
+              <strong class="role-player-name" style="font-size:${effNameFs}px">${esc(r.playerName)}</strong>
             </div>
           </article>
         </div>
@@ -1359,26 +1432,31 @@
       el('slotSummary').textContent = r.variant === 'full' ? '全身模式' : '半身模式';
     } else {
       const teamFont = resolveFontFamily(state.teamFontKey, state.teamCustomFont);
-      const slotsToRender = state.showClosedTeamSlots ? state.teamSlots : state.teamSlots.filter((s) => s.enabled);
-      const slotCount = Math.max(1, slotsToRender.length);
+      const indexedSlots = state.teamSlots
+        .map((s, idx) => ({ s, idx }))
+        .filter((entry) => state.showClosedTeamSlots || entry.s.enabled);
+      const slotCount = Math.max(1, indexedSlots.length);
       currentStageNatW = slotCount * 282 + (slotCount - 1) * 8;
       currentStageNatH = 643;
       currentStageMaxScale = 0.95;
       currentStageScale = computeStageFit(currentStageNatW, currentStageNatH, currentStageMaxScale);
 
-      const slotsHtml = slotsToRender
-        .map((s) => {
+      const slotsHtml = indexedSlots
+        .map(({ s, idx }) => {
+          const isEditing = state.selectedTeamSlot === idx;
           if (!s.enabled) {
-            return `<article class="team-lobby-slot is-closed"><span class="closed-watermark">空槽位</span></article>`;
+            return `<article class="team-lobby-slot is-closed${isEditing ? ' is-editing-slot' : ''}" data-slot-idx="${idx}" title="点击切换到号位 0${idx + 1}"><span class="closed-watermark">空槽位</span></article>`;
           }
           const tm = computeTeamMetrics(s);
           const bgAlpha = (num(s.nameBgOpacity, TEAM_SLOT_DEFAULTS.nameBgOpacity, 0, 95) / 100).toFixed(2);
+          const label = s.name || '玩家';
+          const effSlotFs = measureFitFontPx(label, 282 * 0.88 - 22, s.nameFontSize, 10, 700, teamFont);
 
-          return `<article class="team-lobby-slot">
-            ${s.background ? `<img class="team-bg-img" src="${assetPath(FOLDERS.teamBackgrounds, s.background)}" alt="">` : ''}
+          return `<article class="team-lobby-slot${isEditing ? ' is-editing-slot' : ''}" data-slot-idx="${idx}" title="点击编辑号位 0${idx + 1}">
+            ${s.background ? `<img class="team-bg-img" style="${teamBgInlineStyle(s.background)}" src="${assetPath(FOLDERS.teamBackgrounds, s.background)}" alt="">` : ''}
             ${s.statusText ? `<span class="team-status-tag${s.statusBusy ? ' busy' : ''}" style="font-family:${esc(teamFont)}">${esc(s.statusText)}</span>` : ''}
             ${s.avatar ? `<div class="team-avatar-box" style="left:${tm.avX.toFixed(2)}%;top:${tm.avY.toFixed(2)}%;width:${tm.avWidthPct.toFixed(2)}%"><img src="${assetPath(FOLDERS.avatars, s.avatar)}" alt=""></div>` : ''}
-            <div class="team-name-tag" style="left:${tm.nameX.toFixed(2)}%;top:${tm.nameCenterY.toFixed(2)}%;min-width:${tm.nameMinWidth.toFixed(1)}%;font-size:${s.nameFontSize}px;font-family:${esc(teamFont)};background:rgba(16,21,27,${bgAlpha})"><span>${esc(s.name || '玩家')}</span></div>
+            <div class="team-name-tag" style="left:${tm.nameX.toFixed(2)}%;top:${tm.nameCenterY.toFixed(2)}%;min-width:${tm.nameMinWidth.toFixed(1)}%;font-size:${effSlotFs}px;font-family:${esc(teamFont)};background:rgba(16,21,27,${bgAlpha})"><span>${esc(label)}</span></div>
           </article>`;
         })
         .join('');
@@ -1388,6 +1466,17 @@
           <div class="team-slots-row">${slotsHtml}</div>
         </div>
       </div>`;
+
+      grid.querySelectorAll('[data-slot-idx]').forEach((cardNode) => {
+        cardNode.addEventListener('click', () => {
+          const nextIdx = Number(cardNode.dataset.slotIdx);
+          if (state.selectedTeamSlot !== nextIdx) {
+            state.selectedTeamSlot = nextIdx;
+            renderTeamEditor();
+            renderPreview();
+          }
+        });
+      });
 
       const enabledCount = state.teamSlots.filter((s) => s.enabled).length;
       el('previewEyebrow').textContent = '组队大厅 · 一至四人队列';
@@ -1408,9 +1497,32 @@
     el('assetCount').textContent = `${total.toLocaleString()} 项素材${USE_EXTRACTED ? ' · 原名索引' : ' · 旧库'}`;
   }
 
-  // ==================== 1:1 高清导出 PNG（防字体超时阻塞 + Blob 同源防污染 + 本地 file:// 友好提示） ====================
+  // ==================== 1:1 高清导出 PNG（内存 LRU 缓存 + Blob 同源防污染 + 跨平台矢量双剑） ====================
+  const _imgCache = new Map();
+  const IMG_CACHE_MAX = 32;
+
+  function cachePutImg(src, img, objUrl) {
+    if (_imgCache.has(src)) {
+      const prev = _imgCache.get(src);
+      if (prev.objUrl && prev.objUrl !== objUrl) URL.revokeObjectURL(prev.objUrl);
+      _imgCache.delete(src);
+    } else if (_imgCache.size >= IMG_CACHE_MAX) {
+      const oldestKey = _imgCache.keys().next().value;
+      const oldest = _imgCache.get(oldestKey);
+      if (oldest?.objUrl) URL.revokeObjectURL(oldest.objUrl);
+      _imgCache.delete(oldestKey);
+    }
+    _imgCache.set(src, { img, objUrl: objUrl || '' });
+  }
+
   async function loadImg(src) {
     if (!src) return null;
+    if (_imgCache.has(src)) {
+      const hit = _imgCache.get(src);
+      _imgCache.delete(src);
+      _imgCache.set(src, hit);
+      return hit.img;
+    }
     // 在 http/https 下优先转本地内存 Blob URL，彻底杜绝任何 CDN 头导致的 Canvas 跨域污染
     if (location.protocol === 'http:' || location.protocol === 'https:') {
       try {
@@ -1424,8 +1536,11 @@
             im.onerror = () => resolve(null);
             im.src = objUrl;
           });
-          setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
-          if (img && img.naturalWidth > 0) return img;
+          if (img && img.naturalWidth > 0) {
+            cachePutImg(src, img, objUrl);
+            return img;
+          }
+          URL.revokeObjectURL(objUrl);
         }
       } catch {}
     }
@@ -1434,7 +1549,14 @@
       if (location.protocol === 'http:' || location.protocol === 'https:') {
         img.crossOrigin = 'anonymous';
       }
-      img.onload = () => resolve(img.naturalWidth > 0 ? img : null);
+      img.onload = () => {
+        if (img.naturalWidth > 0) {
+          cachePutImg(src, img, '');
+          resolve(img);
+        } else {
+          resolve(null);
+        }
+      };
       img.onerror = () => resolve(null);
       img.src = src;
     });
@@ -1477,6 +1599,47 @@
     support: ['#4ade80', '#052e16'],
   };
 
+  function drawCrossedSwordsIcon(ctx, cx, cy, size) {
+    const u = size / 24;
+    const tx = (vx) => cx + (vx - 12) * u;
+    const ty = (vy) => cy + (vy - 12) * u;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.94)';
+    ctx.lineWidth = Math.max(1.8, 2.1 * u);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = 'rgba(0,0,0,0.92)';
+    ctx.shadowBlur = 3 * u;
+    ctx.shadowOffsetY = 1 * u;
+    ctx.beginPath();
+    // 左上至右下剑
+    ctx.moveTo(tx(14.5), ty(17.5));
+    ctx.lineTo(tx(3), ty(6));
+    ctx.lineTo(tx(3), ty(3));
+    ctx.lineTo(tx(6), ty(3));
+    ctx.lineTo(tx(17.5), ty(14.5));
+    ctx.moveTo(tx(13), ty(19));
+    ctx.lineTo(tx(19), ty(13));
+    ctx.moveTo(tx(16), ty(16));
+    ctx.lineTo(tx(20), ty(20));
+    ctx.moveTo(tx(19), ty(21));
+    ctx.lineTo(tx(21), ty(19));
+    // 右上至左下剑
+    ctx.moveTo(tx(9.5), ty(17.5));
+    ctx.lineTo(tx(21), ty(6));
+    ctx.lineTo(tx(21), ty(3));
+    ctx.lineTo(tx(18), ty(3));
+    ctx.lineTo(tx(6.5), ty(14.5));
+    ctx.moveTo(tx(11), ty(19));
+    ctx.lineTo(tx(5), ty(13));
+    ctx.moveTo(tx(8), ty(16));
+    ctx.lineTo(tx(4), ty(20));
+    ctx.moveTo(tx(5), ty(21));
+    ctx.lineTo(tx(3), ty(19));
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function drawTraitCircle(ctx, cx, cy, radius, traitKey) {
     const [inner, outer] = TRAIT_COLORS[traitKey] || TRAIT_COLORS.havoc;
     const g = ctx.createRadialGradient(cx, cy, radius * 0.2, cx, cy, radius);
@@ -1516,10 +1679,11 @@
       const m = computeRoleMetrics(r);
       const roleFont = resolveFontFamily(r.fontKey, r.customFont);
       const skinFolder = r.variant === 'full' ? FOLDERS.fullSkins : FOLDERS.halfSkins;
+      const showAv = r.showAvatar !== false && Boolean(r.avatar);
       const [bg, skin, avatar, border] = await Promise.all([
         loadImg(assetPath(FOLDERS.characterBackgrounds, r.background)),
         loadImg(assetPath(skinFolder, r.skin)),
-        loadImg(assetPath(FOLDERS.avatars, r.avatar)),
+        showAv ? loadImg(assetPath(FOLDERS.avatars, r.avatar)) : Promise.resolve(null),
         loadImg(assetPath(FOLDERS.borders, r.border)),
       ]);
 
@@ -1545,6 +1709,9 @@
         ctx.beginPath();
         ctx.rect(0, 0, W, H * 0.78);
         ctx.clip();
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+        ctx.shadowBlur = 12 * SCALE;
+        ctx.shadowOffsetY = 6 * SCALE;
         const targetW = W * (m.artWidth / 100);
         const targetH = targetW * (skin.naturalHeight / skin.naturalWidth);
         const cx = W * (m.artX / 100);
@@ -1567,13 +1734,7 @@
       if (r.showBadges) {
         const bx = W * 0.142 + 12 * SCALE;
         const by = H * 0.138;
-        ctx.save();
-        ctx.font = `${13 * SCALE}px "Segoe UI", sans-serif`;
-        ctx.fillStyle = 'rgba(255,255,255,0.92)';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('⚔', bx, by + 10 * SCALE);
-        ctx.restore();
+        drawCrossedSwordsIcon(ctx, bx, by + 10 * SCALE, 14 * SCALE);
         drawTraitCircle(ctx, bx, by + 38 * SCALE, 12 * SCALE, r.primaryTrait);
         drawTraitCircle(ctx, bx, by + 68 * SCALE, 12 * SCALE, r.subTrait);
       }
@@ -1583,7 +1744,7 @@
         else drawContain(ctx, border, 0, 0, W, H);
       }
 
-      if (avatar) {
+      if (avatar && showAv) {
         const avSize = W * (m.avatarWidth / 100);
         const avX = W * (m.avatarX / 100) - avSize / 2;
         const avY = H * (m.avatarY / 100) - avSize / 2;
@@ -1592,13 +1753,15 @@
         drawCover(ctx, avatar, avX, avY, avSize, avSize);
         ctx.strokeStyle = 'rgba(255,255,255,0.3)';
         ctx.lineWidth = 2;
-        ctx.strokeRect(avX, avY, avSize, avSize);
+        ctx.strokeRect(avX + 1, avY + 1, avSize - 2, avSize - 2);
       }
 
       const textRightX = W * (1 - m.textRight / 100);
+      const avRightEdge = showAv ? W * ((m.avatarX + m.avatarWidth / 2) / 100) + 8 * SCALE : W * 0.13;
+      const maxRoleTextW = Math.max(76 * SCALE, textRightX - avRightEdge);
       const centerY = H * (m.textY / 100);
-      const skinPx = r.skinFontSize * SCALE;
-      const namePx = r.nameFontSize * SCALE;
+      const skinPx = measureFitFontPx(r.skinLabel, maxRoleTextW, r.skinFontSize * SCALE, 10 * SCALE, 700, roleFont);
+      const namePx = measureFitFontPx(r.playerName, maxRoleTextW, r.nameFontSize * SCALE, 11 * SCALE, 800, roleFont);
       // 严格按 CSS 行高盒模型 (1.25 + 3px margin + 1.2) 计算双行文字中心 Y，与实时预览 0 像素误差
       const skinLineH = skinPx * 1.25;
       const nameLineH = namePx * 1.2;
@@ -1638,35 +1801,61 @@
           loadImg(assetPath(FOLDERS.teamBackgrounds, s.background)),
           loadImg(assetPath(FOLDERS.avatars, s.avatar)),
         ]);
+
+        // 槽位实机暗底（保证半透明默认队伍格背景与实机一致）
+        ctx.fillStyle = '#12171f';
+        ctx.fillRect(ox, 0, sw, sh);
+
         if (bg) {
-          const sx = bg.naturalWidth * (8 / 322);
-          const sWidth = bg.naturalWidth * (282 / 322);
-          const sHeight = bg.naturalHeight * (643 / 684);
-          ctx.drawImage(bg, sx, 0, sWidth, sHeight, ox, 0, sw, sh);
+          const c = getTeamBgCrop(s.background, bg.naturalWidth, bg.naturalHeight);
+          ctx.drawImage(bg, c.x0, c.y0, c.cw, c.ch, ox, 0, sw, sh);
         }
 
         if (s.statusText) {
           const stColor = s.statusBusy ? '#38bdf8' : '#65f77b';
+          const stFontPx = Math.round(11.5 * SCALE);
+          const sq = Math.round(6 * SCALE);
+          const stX = ox + sw * 0.045;
+          const stMidY = sh * 0.034 + stFontPx / 2;
+          ctx.save();
+          ctx.shadowColor = 'rgba(0,0,0,0.9)';
+          ctx.shadowBlur = 3 * SCALE;
           ctx.fillStyle = stColor;
-          ctx.fillRect(ox + sw * 0.045, sh * 0.034, 8, 8);
-          ctx.font = `700 ${Math.round(11.5 * SCALE)}px ${teamFont}`;
-          ctx.textBaseline = 'top';
+          ctx.fillRect(stX, stMidY - sq / 2, sq, sq);
+          ctx.font = `700 ${stFontPx}px ${teamFont}`;
+          ctx.textBaseline = 'middle';
           ctx.textAlign = 'left';
-          ctx.fillText(s.statusText, ox + sw * 0.045 + 13, sh * 0.031);
+          ctx.fillText(s.statusText, stX + sq + Math.round(5 * SCALE), stMidY);
+          ctx.restore();
         }
 
         const avSize = sw * (tm.avWidthPct / 100);
         const cx = ox + sw * (tm.avX / 100);
         const cy = sh * (tm.avY / 100);
-        if (av) drawCover(ctx, av, cx - avSize / 2, cy - avSize / 2, avSize, avSize);
+        if (av) {
+          ctx.save();
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.38)';
+          ctx.shadowBlur = 12 * SCALE;
+          ctx.shadowOffsetY = 3 * SCALE;
+          ctx.fillStyle = '#0f1318';
+          ctx.fillRect(cx - avSize / 2, cy - avSize / 2, avSize, avSize);
+          ctx.restore();
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(cx - avSize / 2, cy - avSize / 2, avSize, avSize);
+          ctx.clip();
+          drawCover(ctx, av, cx - avSize / 2, cy - avSize / 2, avSize, avSize);
+          ctx.restore();
+        }
 
         const label = s.name || '玩家';
-        const fontPx = Math.round(s.nameFontSize * SCALE);
-        ctx.font = `700 ${fontPx}px ${teamFont}`;
         const padX = Math.round(11 * SCALE);
-        const boxH = Math.max(Math.round(sh * 0.048), Math.round(fontPx * 1.65));
+        const maxBoxW = sw * 0.88;
+        const fontPx = measureFitFontPx(label, maxBoxW - padX * 2, Math.round(s.nameFontSize * SCALE), Math.round(10 * SCALE), 700, teamFont);
+        ctx.font = `700 ${fontPx}px ${teamFont}`;
+        const boxH = Math.max(Math.round(sh * 0.048), Math.round(fontPx + 8 * SCALE));
         const minBoxW = sw * (tm.nameMinWidth / 100);
-        const boxW = Math.min(sw * 0.88, Math.max(minBoxW, ctx.measureText(label).width + padX * 2));
+        const boxW = Math.min(maxBoxW, Math.max(minBoxW, ctx.measureText(label).width + padX * 2));
 
         const nameCenterY = sh * (tm.nameCenterY / 100);
         const nameCenterX = ox + sw * (tm.nameX / 100);
@@ -2068,8 +2257,8 @@
         },
         {
           tag: '左下玩家头像',
-          name: prettyItemName(r.avatar, '未选择头像'),
-          desc: '铭牌左下角佩戴头像',
+          name: r.showAvatar === false ? `${prettyItemName(r.avatar, '未选择头像')}（当前已隐藏）` : prettyItemName(r.avatar, '未选择头像'),
+          desc: r.showAvatar === false ? '已在铭牌上关闭左下角头像显示' : '铭牌左下角佩戴头像',
           img: avThumb,
           fit: 'cover',
         },

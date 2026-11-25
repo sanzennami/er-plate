@@ -417,9 +417,13 @@ button, input, select { font: inherit; color: inherit; touch-action: manipulatio
   height: 20px;
   display: grid;
   place-items: center;
-  color: rgba(255, 255, 255, 0.92);
-  font-size: 13px;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.9));
+  color: rgba(255, 255, 255, 0.94);
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.92));
+}
+.role-badge-weapon svg {
+  width: 14px;
+  height: 14px;
+  display: block;
 }
 .role-badge-trait {
   width: 24px;
@@ -447,9 +451,19 @@ button, input, select { font: inherit; color: inherit; touch-action: manipulatio
   width: 282px;
   height: 643px;
   flex-shrink: 0;
-  background: transparent;
+  background: #12171f;
   filter: var(--plate-shadow);
   overflow: hidden;
+  cursor: pointer;
+}
+.team-lobby-slot.is-editing-slot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  border: 2px solid var(--teal);
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
 }
 
 .team-bg-img {
@@ -509,8 +523,9 @@ button, input, select { font: inherit; color: inherit; touch-action: manipulatio
   align-items: center;
   justify-content: center;
   min-height: 4.8%;
-  padding: 0 11px;
+  padding: 4px 11px;
   max-width: 88%;
+  overflow: hidden;
   border-radius: 2px;
   color: #ffffff;
   font-weight: 700;
