@@ -1,8 +1,18 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.1.6';
+  const APP_VERSION = '1.2.0';
   const FALLBACK_CHANGELOG = [
+    {
+      version: '1.2.0',
+      date: '2026-11-25',
+      items: [
+        '实装游戏包原生解包「23 种全武器图标 + 16 枚现役核心潜能 + 4 大副系潜能组」高清贴图，切换实验体自动匹配本命武器并支持自由混搭',
+        '新增模式「02 · 加载连排（三人小队）」：1:1 复刻正式加载界面 3 人铭牌紧凑并排与 01～08 队标高亮，支持直接点选/拖拽任意队员立绘、高清透明导出与三人搭配清单图',
+        '新增「★ 我的收藏夹」：支持将调好的角色铭牌一键存入浏览器本地衣柜，可随时载入单人铭牌或一键填入三人连排任意号位，支持覆盖、改名与删除',
+        '修复「◎ 定位」按钮计算偏移导致跳到底部的问题（现可精准居中定位到当前实验体/装扮），优化边框 4 列高视窗丝滑滚轮手感，并按需精简筛选标签为「全部 / 电竞战队包」与「排位/比赛/掉宝」',
+      ],
+    },
     {
       version: '1.1.6',
       date: '2026-11-25',
@@ -103,6 +113,47 @@
   const LABELS = META.labels || {};
   const CHAR_META = META.characters || {};
   const TEAM_BG_CROPS = META.teamBgCrops || {};
+  const WEAPONS = Array.isArray(META.weapons) ? META.weapons : [];
+  const CORE_TRAITS = Array.isArray(META.coreTraits) ? META.coreTraits : [];
+  const TRAIT_GROUPS = META.traitGroups || {};
+
+  function findCharMeta(charKey) {
+    if (!charKey) return null;
+    return CHAR_META[charKey] || Object.values(CHAR_META).find((c) => c.token?.toLowerCase() === String(charKey).toLowerCase()) || null;
+  }
+
+  function charWeaponKeys(charKey) {
+    const cm = findCharMeta(charKey);
+    return Array.isArray(cm?.weapons) && cm.weapons.length ? cm.weapons : ['Arcana'];
+  }
+
+  function defaultWeaponForChar(charKey) {
+    return charWeaponKeys(charKey)[0] || (WEAPONS[0]?.key || 'Arcana');
+  }
+
+  const LEGACY_GROUP_TO_CORE = {
+    havoc: '7000401',
+    chaos: '7300101',
+    fort: '7100101',
+    support: '7200301',
+  };
+
+  function resolveWeaponInfo(r) {
+    const key = r.weaponKey || defaultWeaponForChar(r.characterKey);
+    return WEAPONS.find((w) => w.key === key) || WEAPONS.find((w) => w.key === defaultWeaponForChar(r.characterKey)) || WEAPONS[0] || null;
+  }
+
+  function resolveCoreTraitInfo(r) {
+    const wanted = r.coreTrait || LEGACY_GROUP_TO_CORE[r.primaryTrait] || '7300101';
+    return CORE_TRAITS.find((t) => t.key === wanted) || CORE_TRAITS[0] || null;
+  }
+
+  function resolveSubTraitInfo(r) {
+    const key = r.subTrait || 'havoc';
+    const g = TRAIT_GROUPS[key];
+    const fallbackNames = { havoc: '破坏', chaos: '混沌', fort: '抵抗', support: '支援' };
+    return g ? { key, file: g.file, name: g.name } : { key, file: '', name: fallbackNames[key] || '破坏' };
+  }
 
   function getTeamBgCrop(file, fallbackW = 322, fallbackH = 684) {
     const rec = file && TEAM_BG_CROPS[file];
@@ -155,6 +206,8 @@
         characterPortraits: `${META.baseDir || 'extracted_assets'}/characterPortraits`,
         halfSkins: `${META.baseDir || 'extracted_assets'}/halfSkins`,
         fullSkins: `${META.baseDir || 'extracted_assets'}/fullSkins`,
+        weapons: `${META.baseDir || 'extracted_assets'}/weapons`,
+        traits: `${META.baseDir || 'extracted_assets'}/traits`,
       }
     : {
         teamBackgrounds: '队伍格背景',
@@ -164,6 +217,8 @@
         characterPortraits: '实验体头像',
         halfSkins: 'Half皮肤',
         fullSkins: 'Full皮肤',
+        weapons: 'extracted_assets/weapons',
+        traits: 'extracted_assets/traits',
       };
 
   // ==================== 字体预设库（含离线系统字体与在线开源字体双兜底 + 自定义本机字体） ====================
@@ -200,6 +255,8 @@
     fullSkins: cleanList(RAW_ASSET.fullSkins),
     characterBackgrounds: cleanList(RAW_ASSET.characterBackgrounds),
     borders: cleanList(RAW_ASSET.borders),
+    weapons: cleanList(RAW_ASSET.weapons),
+    traits: cleanList(RAW_ASSET.traits),
   };
 
   const assetPath = (folder, file) => {
@@ -364,40 +421,77 @@
     nameBgOpacity: 68,
   };
 
-  const makeRoleConfig = () => ({
+  function makeRoleConfigByPreset(opts = {}) {
+    const charFile = opts.charToken
+      ? findAsset(basePortraits, (f) => new RegExp(`_${opts.charToken}_S000\\.`, 'i').test(f), defaultCharFile)
+      : defaultCharFile;
+    const cKey = characterForPortrait(charFile);
+    const cZh = characterDisplayName(cKey);
+    const hSkin = findAsset(skinsFor(cKey, 'half'), isDefaultSkinFile);
+    const fSkin = findAsset(skinsFor(cKey, 'full'), isDefaultSkinFile);
+    return {
+      enabled: true,
+      playerName: opts.playerName || '核爆',
+      fontKey: 'default',
+      customFont: '',
+      character: charFile,
+      characterKey: cKey,
+      variant: 'half',
+      halfSkin: hSkin,
+      fullSkin: fSkin,
+      skin: hSkin,
+      skinLabel: displaySkinTitle(cKey, hSkin, 'half'),
+      skinColor: '#78d9ff',
+      background:
+        (opts.bgHint && firstDefault(ASSET.characterBackgrounds, opts.bgHint)) ||
+        firstDefault(ASSET.characterBackgrounds, cZh) ||
+        findAsset(ASSET.characterBackgrounds, (f) => /_Bg_001\./i.test(f)) ||
+        firstDefault(ASSET.characterBackgrounds, '默认背景'),
+      border:
+        (opts.borderHint && firstDefault(ASSET.borders, opts.borderHint)) ||
+        firstDefault(ASSET.borders, cZh) ||
+        findAsset(ASSET.borders, (f) => /_Outline_001\./i.test(f)) ||
+        firstDefault(ASSET.borders, '默认框'),
+      avatar:
+        (opts.avatarHint && firstDefault(ASSET.avatars, opts.avatarHint)) ||
+        firstDefault(ASSET.avatars, cZh) ||
+        ASSET.avatars[0] ||
+        '',
+      halfTransform: { ...ROLE_DEFAULTS.halfTransform },
+      fullTransform: { ...ROLE_DEFAULTS.fullTransform },
+      avatarOffsetX: ROLE_DEFAULTS.avatarOffsetX,
+      avatarOffsetY: ROLE_DEFAULTS.avatarOffsetY,
+      avatarScale: ROLE_DEFAULTS.avatarScale,
+      textOffsetX: ROLE_DEFAULTS.textOffsetX,
+      textOffsetY: ROLE_DEFAULTS.textOffsetY,
+      skinFontSize: ROLE_DEFAULTS.skinFontSize,
+      nameFontSize: ROLE_DEFAULTS.nameFontSize,
+      showBadges: true,
+      showAvatar: true,
+      weaponKey: defaultWeaponForChar(cKey),
+      coreTrait: opts.coreTrait || '7300101',
+      primaryTrait: opts.primaryTrait || 'chaos',
+      subTrait: opts.subTrait || 'havoc',
+    };
+  }
+
+  const makeRoleConfig = () => makeRoleConfigByPreset({
+    charToken: 'YuMin',
     playerName: '核爆',
-    fontKey: 'default',
-    customFont: '',
-    character: defaultCharFile,
-    characterKey: defaultCharKey,
-    variant: 'half',
-    halfSkin: defaultHalf,
-    fullSkin: defaultFull,
-    skin: defaultHalf,
-    skinLabel: displaySkinTitle(defaultCharKey, defaultHalf, 'half'),
-    skinColor: '#78d9ff',
-    background:
-      firstDefault(ASSET.characterBackgrounds, defaultCharZh) ||
-      findAsset(ASSET.characterBackgrounds, (f) => /_Bg_001\./i.test(f)) ||
-      firstDefault(ASSET.characterBackgrounds, '默认背景'),
-    border:
-      firstDefault(ASSET.borders, defaultCharZh) ||
-      findAsset(ASSET.borders, (f) => /_Outline_001\./i.test(f)) ||
-      firstDefault(ASSET.borders, '默认框'),
-    avatar: firstDefault(ASSET.avatars, defaultCharZh) || ASSET.avatars[0] || '',
-    halfTransform: { ...ROLE_DEFAULTS.halfTransform },
-    fullTransform: { ...ROLE_DEFAULTS.fullTransform },
-    avatarOffsetX: ROLE_DEFAULTS.avatarOffsetX,
-    avatarOffsetY: ROLE_DEFAULTS.avatarOffsetY,
-    avatarScale: ROLE_DEFAULTS.avatarScale,
-    textOffsetX: ROLE_DEFAULTS.textOffsetX,
-    textOffsetY: ROLE_DEFAULTS.textOffsetY,
-    skinFontSize: ROLE_DEFAULTS.skinFontSize,
-    nameFontSize: ROLE_DEFAULTS.nameFontSize,
-    showBadges: true,
-    showAvatar: true,
-    primaryTrait: 'havoc',
-    subTrait: 'chaos',
+    coreTrait: '7300101',
+    subTrait: 'havoc',
+  });
+
+  const makeDefaultSquad = () => ({
+    selectedSlot: 0,
+    squadNumber: '01',
+    highlightMySquad: true,
+    cardGap: -38,
+    members: [
+      makeRoleConfigByPreset({ charToken: 'YuMin', playerName: '核爆', coreTrait: '7300101', subTrait: 'havoc', borderHint: '樱花' }),
+      makeRoleConfigByPreset({ charToken: 'Rio', playerName: '神秘吹风男', coreTrait: '7000601', subTrait: 'chaos', borderHint: '莉央' }),
+      makeRoleConfigByPreset({ charToken: 'Luke', playerName: '鸿璐', coreTrait: '7100101', subTrait: 'havoc', borderHint: '卢克' }),
+    ],
   });
 
   const DEFAULT_TEAM_IDS = ['核爆', '神秘吹风男', '鸿璐', '四号队友'];
@@ -427,6 +521,7 @@
     'er-plate-studio-calibrated-v5',
   ];
   const THEME_KEY = 'er-plate-theme-v2';
+  const FAVORITES_KEY = 'er-plate-favorites-v1';
 
   const clamp = (v, min, max) => Math.min(max, Math.max(min, Number(v)));
   const num = (v, fb, min, max) => (Number.isFinite(Number(v)) ? clamp(v, min, max) : fb);
@@ -435,6 +530,52 @@
     if (n > 0) return `+${n}${unit}`;
     return `${n}${unit}`;
   };
+
+  function sanitizeRoleObj(rawRole, fallbackRole) {
+    const freshRole = fallbackRole || makeRoleConfig();
+    const out = {
+      ...freshRole,
+      ...(rawRole || {}),
+      halfTransform: { ...freshRole.halfTransform, ...(rawRole?.halfTransform || {}) },
+      fullTransform: { ...freshRole.fullTransform, ...(rawRole?.fullTransform || {}) },
+    };
+    const matchInPool = (pool, file, fb) => {
+      if (!file) return fb;
+      if (pool.includes(file)) return file;
+      const stem = stripExt(file);
+      return pool.find((x) => stripExt(x) === stem) || fb;
+    };
+    const resolvedChar = matchInPool(ASSET.characterPortraits, out.character, '');
+    if (!resolvedChar) {
+      out.character = freshRole.character;
+      out.characterKey = freshRole.characterKey;
+      out.halfSkin = freshRole.halfSkin;
+      out.fullSkin = freshRole.fullSkin;
+      out.skin = out.variant === 'full' ? freshRole.fullSkin : freshRole.halfSkin;
+      out.skinLabel = displaySkinTitle(freshRole.characterKey, out.skin, out.variant);
+    } else {
+      out.character = resolvedChar;
+      out.characterKey = characterForPortrait(resolvedChar);
+      out.halfSkin = matchInPool(ASSET.halfSkins, out.halfSkin, freshRole.halfSkin);
+      out.fullSkin = matchInPool(ASSET.fullSkins, out.fullSkin, freshRole.fullSkin);
+      const activePool = out.variant === 'full' ? ASSET.fullSkins : ASSET.halfSkins;
+      out.skin = matchInPool(activePool, out.skin, out.variant === 'full' ? out.fullSkin : out.halfSkin);
+    }
+    out.background = matchInPool(ASSET.characterBackgrounds, out.background, freshRole.background);
+    out.border = matchInPool(ASSET.borders, out.border, freshRole.border);
+    out.avatar = matchInPool(ASSET.avatars, out.avatar, freshRole.avatar);
+    if (!out.weaponKey || (WEAPONS.length && !WEAPONS.some((w) => w.key === out.weaponKey))) {
+      out.weaponKey = defaultWeaponForChar(out.characterKey);
+    }
+    if (!out.coreTrait || (CORE_TRAITS.length && !CORE_TRAITS.some((t) => t.key === out.coreTrait))) {
+      out.coreTrait = LEGACY_GROUP_TO_CORE[out.primaryTrait] || '7300101';
+    }
+    if (!['havoc', 'chaos', 'fort', 'support'].includes(out.subTrait)) {
+      out.subTrait = 'havoc';
+    }
+    if (out.enabled === undefined) out.enabled = true;
+    return out;
+  }
 
   function loadState() {
     const savedTheme = localStorage.getItem(THEME_KEY);
@@ -446,6 +587,7 @@
       teamFontKey: 'default',
       teamCustomFont: '',
       role: makeRoleConfig(),
+      squad: makeDefaultSquad(),
       teamSlots: [makeTeamSlot(true, 0), makeTeamSlot(true, 1), makeTeamSlot(true, 2), makeTeamSlot(false, 3)],
     };
     try {
@@ -465,7 +607,7 @@
       const saved = JSON.parse(rawCurrent || legacyRaw || 'null');
       if (!saved || typeof saved !== 'object') return base;
       const fromCalibratedRecent = migratedFromKey === 'er-plate-studio-calibrated-v10' || migratedFromKey === 'er-plate-studio-calibrated-v9';
-      base.mode = saved.mode === 'team' ? 'team' : 'role';
+      base.mode = saved.mode === 'team' ? 'team' : (saved.mode === 'squad' ? 'squad' : 'role');
       base.showClosedTeamSlots = saved.showClosedTeamSlots !== false;
       base.selectedTeamSlot = num(saved.selectedTeamSlot, 0, 0, 3);
       if (saved.teamFontKey) base.teamFontKey = saved.teamFontKey;
@@ -474,58 +616,41 @@
       if (saved.role && typeof saved.role === 'object') {
         const freshRole = base.role;
         if (isMigrating) {
+          const partial = {};
           const keepKeys = [
             'playerName', 'fontKey', 'customFont', 'character', 'characterKey', 'variant',
             'halfSkin', 'fullSkin', 'skin', 'skinLabel', 'skinColor',
-            'background', 'border', 'avatar', 'showBadges', 'showAvatar', 'primaryTrait', 'subTrait',
+            'background', 'border', 'avatar', 'showBadges', 'showAvatar', 'weaponKey', 'coreTrait', 'primaryTrait', 'subTrait',
             ...(fromCalibratedRecent
               ? ['nameFontSize', 'skinFontSize', 'textOffsetX', 'textOffsetY', 'avatarOffsetX', 'avatarOffsetY', 'avatarScale']
               : []),
           ];
           keepKeys.forEach((k) => {
-            if (saved.role[k] !== undefined) base.role[k] = saved.role[k];
+            if (saved.role[k] !== undefined) partial[k] = saved.role[k];
           });
-          // 若旧缓存里仍停留在之前默认的阿迪娜，自动无缝切换为新默认实验体「俞岷」
-          if (/_Adina_S000\./i.test(String(base.role.character || ''))) {
-            base.role.character = freshRole.character;
-            base.role.characterKey = freshRole.characterKey;
-            base.role.halfSkin = freshRole.halfSkin;
-            base.role.fullSkin = freshRole.fullSkin;
-            base.role.skin = base.role.variant === 'full' ? freshRole.fullSkin : freshRole.halfSkin;
-            base.role.skinLabel = displaySkinTitle(freshRole.characterKey, base.role.skin, base.role.variant);
+          if (/_Adina_S000\./i.test(String(partial.character || ''))) {
+            delete partial.character;
+            delete partial.characterKey;
+            delete partial.halfSkin;
+            delete partial.fullSkin;
+            delete partial.skin;
+            delete partial.skinLabel;
           }
+          base.role = sanitizeRoleObj(partial, freshRole);
         } else {
-          base.role = {
-            ...freshRole,
-            ...saved.role,
-            halfTransform: { ...freshRole.halfTransform, ...(saved.role.halfTransform || {}) },
-            fullTransform: { ...freshRole.fullTransform, ...(saved.role.fullTransform || {}) },
-          };
+          base.role = sanitizeRoleObj(saved.role, freshRole);
         }
-        const matchInPool = (pool, file, fb) => {
-          if (!file) return fb;
-          if (pool.includes(file)) return file;
-          const stem = stripExt(file);
-          return pool.find((x) => stripExt(x) === stem) || fb;
+      }
+
+      if (saved.squad && typeof saved.squad === 'object') {
+        const defSq = base.squad;
+        base.squad = {
+          selectedSlot: num(saved.squad.selectedSlot, 0, 0, 2),
+          squadNumber: saved.squad.squadNumber !== undefined ? String(saved.squad.squadNumber) : defSq.squadNumber,
+          highlightMySquad: saved.squad.highlightMySquad !== false,
+          cardGap: num(saved.squad.cardGap, defSq.cardGap, -54, 24),
+          members: [0, 1, 2].map((idx) => sanitizeRoleObj(saved.squad.members?.[idx], defSq.members[idx])),
         };
-        const resolvedChar = matchInPool(ASSET.characterPortraits, base.role.character, '');
-        if (!resolvedChar) {
-          base.role.character = freshRole.character;
-          base.role.characterKey = freshRole.characterKey;
-          base.role.halfSkin = freshRole.halfSkin;
-          base.role.fullSkin = freshRole.fullSkin;
-          base.role.skin = base.role.variant === 'full' ? freshRole.fullSkin : freshRole.halfSkin;
-          base.role.skinLabel = displaySkinTitle(freshRole.characterKey, base.role.skin, base.role.variant);
-        } else {
-          base.role.character = resolvedChar;
-          base.role.halfSkin = matchInPool(ASSET.halfSkins, base.role.halfSkin, freshRole.halfSkin);
-          base.role.fullSkin = matchInPool(ASSET.fullSkins, base.role.fullSkin, freshRole.fullSkin);
-          const activePool = base.role.variant === 'full' ? ASSET.fullSkins : ASSET.halfSkins;
-          base.role.skin = matchInPool(activePool, base.role.skin, base.role.variant === 'full' ? base.role.fullSkin : base.role.halfSkin);
-        }
-        base.role.background = matchInPool(ASSET.characterBackgrounds, base.role.background, freshRole.background);
-        base.role.border = matchInPool(ASSET.borders, base.role.border, freshRole.border);
-        base.role.avatar = matchInPool(ASSET.avatars, base.role.avatar, freshRole.avatar);
       }
       if (Array.isArray(saved.teamSlots) && saved.teamSlots.length === 4) {
         const matchTeam = (pool, file, fb) => {
@@ -560,7 +685,29 @@
   const el = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  const currentArtTransform = () => (state.role.variant === 'full' ? state.role.fullTransform : state.role.halfTransform);
+  const activeRole = () => (state.mode === 'squad' ? state.squad.members[state.squad.selectedSlot] : state.role);
+  const currentArtTransform = (roleObj = activeRole()) => (roleObj.variant === 'full' ? roleObj.fullTransform : roleObj.halfTransform);
+
+  // ==================== 本地收藏夹（我的铭牌衣柜） ====================
+  function loadFavorites() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]');
+      return Array.isArray(raw) ? raw.filter((it) => it && typeof it === 'object' && it.config) : [];
+    } catch {
+      return [];
+    }
+  }
+  let favorites = loadFavorites();
+  let favDrawerOpen = false;
+
+  function saveFavorites() {
+    try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites)); } catch {}
+    if (el('favCountBadge')) el('favCountBadge').textContent = String(favorites.length);
+  }
+
+  function cloneRoleConfig(r) {
+    return JSON.parse(JSON.stringify(r));
+  }
 
   function computeRoleMetrics(r) {
     const isFull = r.variant === 'full';
@@ -628,49 +775,44 @@
     { color: '#ffffff', title: '纯净亮白' },
   ];
 
-  const RE_ESPORTS = /(S\d+\s*[・·]|CNJ|ROX|SEJONG|CYBERS|AutoArms|Sparkle|Incheon|INCHEON|Slasher|Innate|BeSPA|Phalanx|Guardians|Ascenders|Whales|MIR|WAVE|BUSAN|ESPORTS|FearX|Shadow|GEN\.G|ERCC|KEL)/i;
-  const RE_RANK = /(赛季|排位|永恒|半神|无瑕|星陨|灭钻|修罗|金魄|银烙|铜魂|铁阎|泰坦|CHAMPION|WINNER|冠军|挑战赛)/i;
-  const RE_COLLAB = /(P5R|GGST|JOKER|VIOLET|CROW|QUEEN|PANTHER|婕克|艾尔菲尔特)/i;
+  const RE_ESPORTS = /(S\d+\s*[・·]|202\d\s+(?:GC|Daegu|INCHEON|GJ|DAEJEON|FN|Gyeonggi|New Rise|Chungnam|JEONNAM|GyeongBuk|Gyeongnam|Jeju|Goyang|Seongnam|YJ)|CNJ|ROX|SEJONG|CYBERS|AutoArms|Sparkle|Incheon|INCHEON|Slasher|Innate|BeSPA|Phalanx|Guardians|Ascenders|Whales|MIR|WAVE|BUSAN|ESPORTS|FearX|Shadow|GEN\.G|ERCC|电竞助力者)/i;
+  const RE_DROPS_RANK = /(赛季|排位|永恒|半神|无瑕|星陨|灭钻|修罗|金魄|银烙|铜魂|铁阎|泰坦|CHAMPION|WINNER|冠军|挑战赛|电竞社区|电竞参赛者|KEL|ERM|JAPAN CUP|SUPPORTERS|CAMPUS|Marathoner|合作伙伴|BILIBILI|Naver|WeGame)/i;
 
+  // 按用户需求精简分类：边框与背景仅分「全部 / 电竞战队包」；头像分「全部 / 电竞战队包 / 排位·比赛·掉宝 / 实验体头像」
   const PICKER_FILTERS = {
     border: [
       { key: 'all', label: '全部', fn: () => true },
-      { key: 'esports', label: '电竞战队', fn: (f, z) => RE_ESPORTS.test(z) || RE_ESPORTS.test(f) },
-      { key: 'rank', label: '排位/冠军', fn: (f, z) => RE_RANK.test(z) || RE_RANK.test(f) },
-      { key: 'collab', label: '联动限定', fn: (f, z) => RE_COLLAB.test(z) || RE_COLLAB.test(f) },
-      { key: 'theme', label: '兔女郎/女仆/夏', fn: (_, z) => /(兔女郎|女仆|执事|萌仆|夏日|海滨|仲夏|清凉|热带|碧波|踏浪|海色)/.test(z) },
-      { key: 'fest', label: '周年/花语', fn: (_, z) => /(周年|圣诞|新年|青龙|情人|中秋|樱|花|蝶|春)/.test(z) },
+      { key: 'esports', label: '电竞战队包', fn: (f, z) => RE_ESPORTS.test(z) || RE_ESPORTS.test(f) },
     ],
     roleBackground: [
       { key: 'all', label: '全部', fn: () => true },
-      { key: 'esports', label: '电竞战队', fn: (f, z) => RE_ESPORTS.test(z) || RE_ESPORTS.test(f) },
-      { key: 'rank', label: '排位荣誉', fn: (f, z) => RE_RANK.test(z) || RE_RANK.test(f) },
-      { key: 'collab', label: '联动限定', fn: (f, z) => RE_COLLAB.test(z) || RE_COLLAB.test(f) },
-      { key: 'theme', label: '兔女郎/女仆/夏', fn: (_, z) => /(兔女郎|女仆|执事|萌仆|夏日|海滨|仲夏|清凉|热带|碧波|踏浪|海色)/.test(z) },
-      { key: 'fest', label: '周年/节日', fn: (_, z) => /(周年|圣诞|新年|青龙|情人|中秋|烟花|花|蝶)/.test(z) },
-    ],
-    avatar: [
-      { key: 'all', label: '全部', fn: () => true },
-      { key: 'hero', label: '实验体头像', fn: (f, z) => /_1020\d\d\./i.test(f) || (/头像$/.test(z) && !RE_ESPORTS.test(z)) },
-      { key: 'emote', label: '表情/徽章', fn: (f, z) => !RE_ESPORTS.test(z) && !RE_RANK.test(z) && !RE_COLLAB.test(z) && !/_1020\d\d\./i.test(f) },
-      { key: 'esports', label: '电竞战队', fn: (f, z) => RE_ESPORTS.test(z) || RE_ESPORTS.test(f) },
-      { key: 'rank', label: '排位/冠军', fn: (f, z) => RE_RANK.test(z) || RE_RANK.test(f) },
-      { key: 'collab', label: '联动限定', fn: (f, z) => RE_COLLAB.test(z) || RE_COLLAB.test(f) },
+      { key: 'esports', label: '电竞战队包', fn: (f, z) => RE_ESPORTS.test(z) || RE_ESPORTS.test(f) },
     ],
     background: [
       { key: 'all', label: '全部', fn: () => true },
-      { key: 'esports', label: '电竞战队', fn: (f, z) => RE_ESPORTS.test(z) || RE_ESPORTS.test(f) },
-      { key: 'char', label: '角色/皮肤', fn: (f, z) => !RE_ESPORTS.test(z) && !RE_COLLAB.test(z) && !/(周年|圣诞|新年|中秋|青龙|合作伙伴|WeGame|默认)/.test(z) },
-      { key: 'fest', label: '周年/纪念', fn: (_, z) => /(周年|圣诞|新年|中秋|青龙|合作伙伴|WeGame|雪花|红叶)/.test(z) },
-      { key: 'collab', label: '联动限定', fn: (f, z) => RE_COLLAB.test(z) || RE_COLLAB.test(f) },
+      { key: 'esports', label: '电竞战队包', fn: (f, z) => RE_ESPORTS.test(z) || RE_ESPORTS.test(f) },
+    ],
+    avatar: [
+      { key: 'all', label: '全部', fn: () => true },
+      { key: 'esports', label: '电竞战队包', fn: (f, z) => RE_ESPORTS.test(z) || RE_ESPORTS.test(f) },
+      {
+        key: 'drops',
+        label: '排位/比赛/掉宝',
+        fn: (f, z) => !RE_ESPORTS.test(z) && (RE_DROPS_RANK.test(z) || RE_DROPS_RANK.test(f) || /_103\d{3}\./i.test(f)),
+      },
+      {
+        key: 'hero',
+        label: '实验体头像',
+        fn: (f, z) => !RE_ESPORTS.test(z) && (/_1020\d\d\./i.test(f) || /_1080\d\d\./i.test(f) || (/头像$/.test(z) && !RE_DROPS_RANK.test(z))),
+      },
     ],
   };
 
   if (panelScrollEl) {
     panelScrollEl.addEventListener('wheel', (e) => {
       const insideGrid = e.target.closest('.asset-grid');
-      if (!insideGrid || performance.now() < outerScrollLockUntil) {
-        outerScrollLockUntil = performance.now() + 420;
+      if (!insideGrid) {
+        outerScrollLockUntil = performance.now() + 140;
       }
     }, { passive: true });
   }
@@ -748,12 +890,13 @@
       });
     }
 
+    grid.addEventListener('mouseenter', () => { outerScrollLockUntil = 0; });
+    grid.addEventListener('mousemove', () => { outerScrollLockUntil = 0; }, { passive: true });
     grid.addEventListener('mousedown', () => { outerScrollLockUntil = 0; });
     grid.addEventListener('wheel', (e) => {
       if (panelScrollEl && performance.now() < outerScrollLockUntil) {
         e.preventDefault();
         panelScrollEl.scrollTop += e.deltaY;
-        outerScrollLockUntil = performance.now() + 420;
       }
     }, { passive: false });
 
@@ -843,19 +986,25 @@
       }
       const selIdx = sel ? currentList.indexOf(sel) : -1;
       if (selIdx >= renderedCount) {
-        appendMore(selIdx + 24);
-      }
-      if (scrollPanel && panelScrollEl) {
-        box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        box.classList.remove('flash-focus');
-        void box.offsetWidth;
-        box.classList.add('flash-focus');
+        appendMore(selIdx + 32);
       }
       requestAnimationFrame(() => {
         const selNode = grid.querySelector('.asset-option.selected');
         if (selNode) {
-          grid.scrollTop = Math.max(0, selNode.offsetTop - grid.clientHeight / 2 + selNode.offsetHeight / 2);
+          const gridRect = grid.getBoundingClientRect();
+          const nodeRect = selNode.getBoundingClientRect();
+          const targetGridTop = grid.scrollTop + (nodeRect.top - gridRect.top) - (grid.clientHeight - nodeRect.height) / 2;
+          grid.scrollTop = Math.max(0, targetGridTop);
           pickerScrollMap.set(pickerKey, grid.scrollTop);
+        }
+        if (scrollPanel && panelScrollEl) {
+          const panelRect = panelScrollEl.getBoundingClientRect();
+          const boxRect = box.getBoundingClientRect();
+          const targetPanelTop = panelScrollEl.scrollTop + (boxRect.top - panelRect.top) - 10;
+          panelScrollEl.scrollTo({ top: Math.max(0, targetPanelTop), behavior: 'smooth' });
+          box.classList.remove('flash-focus');
+          void box.offsetWidth;
+          box.classList.add('flash-focus');
         }
       });
     };
@@ -897,12 +1046,262 @@
     };
   }
 
-  // ==================== 右侧编辑器：单人角色铭牌 ====================
+  // ==================== 收藏夹抽屉 & 三人加载连排顶栏 & 单人/连排共用角色编辑器 ====================
+  function weaponOptionsHtml(charKey, curWeaponKey) {
+    if (!WEAPONS.length) {
+      return '<option value="Arcana">圣器</option>';
+    }
+    const charWKeys = charWeaponKeys(charKey);
+    const ownWeapons = WEAPONS.filter((w) => charWKeys.includes(w.key));
+    const otherWeapons = WEAPONS.filter((w) => !charWKeys.includes(w.key));
+    const renderOpt = (w) => `<option value="${esc(w.key)}" ${w.key === curWeaponKey ? 'selected' : ''}>${esc(w.name)}</option>`;
+    if (!ownWeapons.length) return WEAPONS.map(renderOpt).join('');
+    return `<optgroup label="本实验体可用武器">${ownWeapons.map(renderOpt).join('')}</optgroup>
+      <optgroup label="全部武器（自由混搭）">${otherWeapons.map(renderOpt).join('')}</optgroup>`;
+  }
+
+  function coreTraitOptionsHtml(curCoreKey) {
+    if (!CORE_TRAITS.length) {
+      return '<option value="7300101">星尘蓄势</option>';
+    }
+    const groupOrder = [
+      { key: 'havoc', label: '破坏系核心' },
+      { key: 'chaos', label: '混沌系核心' },
+      { key: 'fort', label: '抵抗系核心' },
+      { key: 'support', label: '支援系核心' },
+    ];
+    return groupOrder
+      .map((g) => {
+        const list = CORE_TRAITS.filter((t) => t.group === g.key);
+        if (!list.length) return '';
+        return `<optgroup label="${g.label}">${list
+          .map((t) => `<option value="${esc(t.key)}" ${t.key === curCoreKey ? 'selected' : ''}>${esc(t.name)}</option>`)
+          .join('')}</optgroup>`;
+      })
+      .join('');
+  }
+
+  function renderFavoritesDrawer() {
+    const drawer = el('favoritesDrawer');
+    if (el('favCountBadge')) el('favCountBadge').textContent = String(favorites.length);
+    if (el('favDrawerBtn')) el('favDrawerBtn').classList.toggle('active', favDrawerOpen);
+    if (!drawer) return;
+    drawer.hidden = !favDrawerOpen;
+    if (!favDrawerOpen) return;
+
+    const targetLabel = state.mode === 'squad'
+      ? `载入至队员0${state.squad.selectedSlot + 1}`
+      : '载入';
+
+    const listHtml = favorites.length
+      ? `<div class="fav-list">${favorites
+          .map((fav, idx) => {
+            const c = fav.config || {};
+            const charZh = characterDisplayName(c.characterKey) || '实验体';
+            const borderZh = cleanDisplayLabel(c.border, 'border') || '默认框';
+            return `<div class="fav-item" data-fav-idx="${idx}">
+              <div class="fav-item-thumbs">
+                <img src="${assetPath(FOLDERS.characterPortraits, c.character)}" alt="">
+                <img class="is-border" src="${assetPath(FOLDERS.borders, c.border)}" alt="">
+              </div>
+              <div class="fav-item-info">
+                <div class="fav-item-name" title="${esc(fav.title)}">${esc(fav.title)}</div>
+                <div class="fav-item-sub">${esc(charZh)} · ${esc(borderZh)} · 昵称「${esc(c.playerName || '—')}」</div>
+              </div>
+              <div class="fav-item-actions">
+                <button type="button" class="fav-act-btn primary" data-fav-act="load">${targetLabel}</button>
+                <button type="button" class="fav-act-btn" data-fav-act="overwrite" title="用当前正在编辑的搭配覆盖此收藏">覆盖</button>
+                <button type="button" class="fav-act-btn" data-fav-act="rename" title="重命名此收藏">改名</button>
+                <button type="button" class="fav-act-btn danger" data-fav-act="delete" title="删除">✕</button>
+              </div>
+            </div>`;
+          })
+          .join('')}</div>`
+      : '<div class="fav-empty">暂无收藏方案 · 配好喜欢的铭牌后点击右上角「+ 收藏当前搭配」即可随时一键复用或装填三人车队！</div>';
+
+    drawer.innerHTML = `<div class="fav-drawer-head">
+        <span class="fav-drawer-title">★ 我的铭牌收藏夹（浏览器本地持久保存）</span>
+        <button type="button" class="fav-save-btn" id="saveCurrentFavBtn">+ 收藏当前搭配</button>
+      </div>
+      ${listHtml}`;
+
+    el('saveCurrentFavBtn')?.addEventListener('click', () => {
+      const r = activeRole();
+      const charZh = characterDisplayName(r.characterKey) || '实验体';
+      const borderZh = cleanDisplayLabel(r.border, 'border') || '默认框';
+      const defaultTitle = `${charZh} · ${borderZh}`;
+      favorites.unshift({
+        id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        title: defaultTitle,
+        savedAt: Date.now(),
+        config: cloneRoleConfig(r),
+      });
+      saveFavorites();
+      renderFavoritesDrawer();
+      showToast(`已收藏「${defaultTitle}」`);
+    });
+
+    drawer.querySelectorAll('.fav-item').forEach((row) => {
+      const idx = Number(row.dataset.favIdx);
+      const item = favorites[idx];
+      if (!item) return;
+      row.querySelector('[data-fav-act="load"]')?.addEventListener('click', () => {
+        const restored = sanitizeRoleObj(cloneRoleConfig(item.config), makeRoleConfig());
+        if (state.mode === 'squad') {
+          restored.enabled = state.squad.members[state.squad.selectedSlot].enabled;
+          state.squad.members[state.squad.selectedSlot] = restored;
+          renderSquadHead();
+          renderRoleEditor();
+          renderPreview();
+          showToast(`已将「${item.title}」载入至队员 0${state.squad.selectedSlot + 1}`);
+        } else {
+          state.role = restored;
+          renderRoleEditor();
+          renderPreview();
+          showToast(`已载入收藏方案「${item.title}」`);
+        }
+      });
+      row.querySelector('[data-fav-act="overwrite"]')?.addEventListener('click', () => {
+        item.config = cloneRoleConfig(activeRole());
+        item.savedAt = Date.now();
+        saveFavorites();
+        renderFavoritesDrawer();
+        showToast(`已更新收藏方案「${item.title}」`);
+      });
+      row.querySelector('[data-fav-act="rename"]')?.addEventListener('click', () => {
+        const nextName = window.prompt('请输入新的收藏方案名称：', item.title);
+        if (nextName && nextName.trim()) {
+          item.title = nextName.trim().slice(0, 36);
+          saveFavorites();
+          renderFavoritesDrawer();
+        }
+      });
+      row.querySelector('[data-fav-act="delete"]')?.addEventListener('click', () => {
+        favorites.splice(idx, 1);
+        saveFavorites();
+        renderFavoritesDrawer();
+        showToast('已删除该条收藏');
+      });
+    });
+  }
+
+  function renderSquadHead() {
+    const box = el('squadControlHead');
+    if (!box) return;
+    if (state.mode !== 'squad') {
+      box.hidden = true;
+      return;
+    }
+    box.hidden = false;
+    const sq = state.squad;
+    const curMember = sq.members[sq.selectedSlot];
+
+    box.innerHTML = `<div class="squad-head-card">
+      <div class="slot-tabs">
+        ${sq.members
+          .map((m, i) => {
+            const cZh = characterDisplayName(m.characterKey) || `0${i + 1}`;
+            return `<button type="button" class="slot-tab${sq.selectedSlot === i ? ' active' : ''}${m.enabled !== false ? ' enabled' : ''}" data-sq-tab="${i}">0${i + 1} · ${esc(cZh)}</button>`;
+          })
+          .join('')}
+      </div>
+      <div class="squad-meta-row">
+        <label class="switch-label">
+          <input id="squadMemberEnabled" type="checkbox" ${curMember.enabled !== false ? 'checked' : ''}>
+          启用本号位
+        </label>
+        <div style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <select id="squadNumSelect" class="squad-num-select" title="左上角加载界面小队编号">
+            <option value="" ${sq.squadNumber === '' ? 'selected' : ''}>隐藏队标号</option>
+            ${['01', '02', '03', '04', '05', '06', '07', '08']
+              .map((n) => `<option value="${n}" ${sq.squadNumber === n ? 'selected' : ''}>小队 #${n}</option>`)
+              .join('')}
+          </select>
+          <label class="switch-label" title="开启后队标数字呈现实机本队专属青色高亮">
+            <input id="squadHighlightToggle" type="checkbox" ${sq.highlightMySquad ? 'checked' : ''}>
+            本队青色
+          </label>
+        </div>
+      </div>
+      <label class="range-field">
+        <span>卡片连排紧凑间距 <output id="squadGapVal">${sq.cardGap}px</output></span>
+        <input id="squadGapRange" type="range" min="-52" max="16" step="1" value="${sq.cardGap}" title="双击恢复实机标准紧凑间距 -38px">
+      </label>
+      <div class="squad-quick-actions">
+        <button type="button" class="mini-reset-btn" id="copyFromSoloBtn" title="把「单人铭牌」模式当前配好的整张卡复制到本号位">📥 导入单人铭牌至本槽</button>
+        <button type="button" class="mini-reset-btn" id="syncSquadFontBtn" title="将当前号位的字体与字号一键同步给全队 3 人">⇄ 同步字体与字号到全队</button>
+      </div>
+    </div>`;
+
+    box.querySelectorAll('[data-sq-tab]').forEach((b) => {
+      b.addEventListener('click', () => {
+        sq.selectedSlot = Number(b.dataset.sqTab);
+        renderFavoritesDrawer();
+        renderSquadHead();
+        renderRoleEditor();
+        renderPreview();
+      });
+    });
+
+    el('squadMemberEnabled')?.addEventListener('change', (e) => {
+      const enabledNow = sq.members.filter((m, idx) => (idx === sq.selectedSlot ? e.target.checked : m.enabled !== false)).length;
+      if (enabledNow < 1) {
+        e.target.checked = true;
+        showToast('加载连排至少需保留 1 名队员');
+        return;
+      }
+      curMember.enabled = e.target.checked;
+      renderSquadHead();
+      renderPreview();
+    });
+
+    el('squadNumSelect')?.addEventListener('change', (e) => {
+      sq.squadNumber = e.target.value;
+      renderPreview();
+    });
+    el('squadHighlightToggle')?.addEventListener('change', (e) => {
+      sq.highlightMySquad = e.target.checked;
+      renderPreview();
+    });
+    el('squadGapRange')?.addEventListener('input', (e) => {
+      sq.cardGap = num(e.target.value, -38, -52, 16);
+      el('squadGapVal').textContent = `${sq.cardGap}px`;
+      renderPreview();
+    });
+    el('squadGapRange')?.addEventListener('dblclick', () => {
+      sq.cardGap = -38;
+      el('squadGapRange').value = -38;
+      el('squadGapVal').textContent = '-38px';
+      renderPreview();
+    });
+    el('copyFromSoloBtn')?.addEventListener('click', () => {
+      const cloned = cloneRoleConfig(state.role);
+      cloned.enabled = curMember.enabled;
+      sq.members[sq.selectedSlot] = sanitizeRoleObj(cloned, makeRoleConfig());
+      renderSquadHead();
+      renderRoleEditor();
+      renderPreview();
+      showToast(`已将单人铭牌搭配导入至队员 0${sq.selectedSlot + 1}`);
+    });
+    el('syncSquadFontBtn')?.addEventListener('click', () => {
+      sq.members.forEach((m) => {
+        m.fontKey = curMember.fontKey;
+        m.customFont = curMember.customFont;
+        m.nameFontSize = curMember.nameFontSize;
+        m.skinFontSize = curMember.skinFontSize;
+      });
+      renderPreview();
+      showToast('已将当前号位的字体与双行字号同步到全小队');
+    });
+  }
+
   function renderRoleEditor() {
-    const r = state.role;
-    const tf = currentArtTransform();
+    const r = activeRole();
+    const tf = currentArtTransform(r);
     const box = el('roleEditor');
     const prevPanelScroll = panelScrollEl ? panelScrollEl.scrollTop : 0;
+    const curWeapon = resolveWeaponInfo(r);
+    const curCore = resolveCoreTraitInfo(r);
 
     box.innerHTML = `<div class="editor-card">
       <div class="field-inline">
@@ -950,56 +1349,65 @@
         </div>
       </details>
 
-      <div class="editor-row-between">
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div class="badge-config-box">
+        <div class="editor-row-between">
           <label class="switch-label">
             <input id="roleShowBadges" type="checkbox" ${r.showBadges ? 'checked' : ''}>
-            左上武器/潜能
+            左上实机武器 &amp; 潜能图标
           </label>
           <label class="switch-label">
             <input id="roleShowAvatar" type="checkbox" ${r.showAvatar !== false ? 'checked' : ''}>
-            左下头像
+            左下玩家头像
           </label>
         </div>
-        <div class="trait-select-group">
-          <select id="rolePrimaryTrait" class="trait-select" aria-label="主潜能">
-            <option value="havoc" ${r.primaryTrait === 'havoc' ? 'selected' : ''}>破坏红</option>
-            <option value="chaos" ${r.primaryTrait === 'chaos' ? 'selected' : ''}>混沌紫</option>
-            <option value="fort" ${r.primaryTrait === 'fort' ? 'selected' : ''}>抵抗蓝</option>
-            <option value="support" ${r.primaryTrait === 'support' ? 'selected' : ''}>支援绿</option>
-          </select>
-          <select id="roleSubTrait" class="trait-select" aria-label="副潜能">
-            <option value="chaos" ${r.subTrait === 'chaos' ? 'selected' : ''}>混沌紫</option>
-            <option value="havoc" ${r.subTrait === 'havoc' ? 'selected' : ''}>破坏红</option>
-            <option value="fort" ${r.subTrait === 'fort' ? 'selected' : ''}>抵抗蓝</option>
-            <option value="support" ${r.subTrait === 'support' ? 'selected' : ''}>支援绿</option>
-          </select>
+        <div class="badge-select-grid" id="roleBadgeSelects" ${r.showBadges ? '' : 'hidden'}>
+          <label class="badge-select-field">
+            <span>武器类型</span>
+            <select id="roleWeaponSelect" aria-label="武器图标">
+              ${weaponOptionsHtml(r.characterKey, curWeapon?.key || 'Arcana')}
+            </select>
+          </label>
+          <label class="badge-select-field">
+            <span>核心潜能</span>
+            <select id="roleCoreTrait" aria-label="核心潜能">
+              ${coreTraitOptionsHtml(curCore?.key || '7300101')}
+            </select>
+          </label>
+          <label class="badge-select-field">
+            <span>副系潜能</span>
+            <select id="roleSubTrait" aria-label="副系潜能">
+              <option value="havoc" ${r.subTrait === 'havoc' ? 'selected' : ''}>破坏</option>
+              <option value="chaos" ${r.subTrait === 'chaos' ? 'selected' : ''}>混沌</option>
+              <option value="fort" ${r.subTrait === 'fort' ? 'selected' : ''}>抵抗</option>
+              <option value="support" ${r.subTrait === 'support' ? 'selected' : ''}>支援</option>
+            </select>
+          </label>
         </div>
       </div>
 
       <div class="loadout-overview" id="roleOverviewBar" aria-label="当前已选装扮速览（点击定位）">
-        <button type="button" class="overview-chip" data-jump-kind="skin" title="点击跳转到皮肤列表">
+        <button type="button" class="overview-chip" data-jump-kind="character" title="点击跳转并居中定位到当前选中的实验体">
           <img id="ovCharImg" src="${assetPath(FOLDERS.characterPortraits, r.character)}" alt="">
           <span class="overview-chip-meta">
             <span class="overview-chip-tag">实验体 · 皮肤</span>
             <span class="overview-chip-name" id="ovSkinText"></span>
           </span>
         </button>
-        <button type="button" class="overview-chip" data-jump-kind="border" title="点击跳转到铭牌边框">
+        <button type="button" class="overview-chip" data-jump-kind="border" title="点击跳转并居中定位到当前铭牌边框">
           <img id="ovBorderImg" class="is-contain" src="${assetPath(FOLDERS.borders, r.border)}" alt="">
           <span class="overview-chip-meta">
             <span class="overview-chip-tag">铭牌边框</span>
             <span class="overview-chip-name" id="ovBorderText"></span>
           </span>
         </button>
-        <button type="button" class="overview-chip" data-jump-kind="roleBackground" title="点击跳转到人物背景板">
+        <button type="button" class="overview-chip" data-jump-kind="roleBackground" title="点击跳转并居中定位到当前人物背景板">
           <img id="ovBgImg" class="is-contain" src="${assetPath(FOLDERS.characterBackgrounds, r.background)}" alt="">
           <span class="overview-chip-meta">
             <span class="overview-chip-tag">人物背景板</span>
             <span class="overview-chip-name" id="ovBgText"></span>
           </span>
         </button>
-        <button type="button" class="overview-chip" data-jump-kind="avatar" title="点击跳转到左下玩家头像">
+        <button type="button" class="overview-chip" data-jump-kind="avatar" title="点击跳转并居中定位到当前左下玩家头像">
           <img id="ovAvImg" src="${assetPath(FOLDERS.avatars, r.avatar)}" alt="">
           <span class="overview-chip-meta">
             <span class="overview-chip-tag">左下玩家头像</span>
@@ -1062,9 +1470,14 @@
         renderPreview();
       });
     });
-    el('roleShowBadges').addEventListener('change', (e) => { r.showBadges = e.target.checked; renderPreview(); });
+    el('roleShowBadges').addEventListener('change', (e) => {
+      r.showBadges = e.target.checked;
+      if (el('roleBadgeSelects')) el('roleBadgeSelects').hidden = !r.showBadges;
+      renderPreview();
+    });
     el('roleShowAvatar').addEventListener('change', (e) => { r.showAvatar = e.target.checked; renderPreview(); });
-    el('rolePrimaryTrait').addEventListener('change', (e) => { r.primaryTrait = e.target.value; renderPreview(); });
+    el('roleWeaponSelect').addEventListener('change', (e) => { r.weaponKey = e.target.value; renderPreview(); });
+    el('roleCoreTrait').addEventListener('change', (e) => { r.coreTrait = e.target.value; renderPreview(); });
     el('roleSubTrait').addEventListener('change', (e) => { r.subTrait = e.target.value; renderPreview(); });
 
     el('roleFontSelect').addEventListener('change', (e) => {
@@ -1217,7 +1630,7 @@
             r.variant === 'full' ? FOLDERS.fullSkins : FOLDERS.halfSkins,
             `${characterDisplayName(r.characterKey)} 皮肤列表`
           );
-          pickerScrollMap.set('role:skin', 0);
+          pickerScrollMap.set(`${state.mode}:skin`, 0);
           skinPickerCtrl.rebuild(false);
         }
         renderPreview();
@@ -1227,18 +1640,25 @@
     const charPickerCtrl = mountPicker(box, 'character', basePortraits, () => r.character, (file) => {
       r.character = file;
       r.characterKey = characterForPortrait(file);
+      r.weaponKey = defaultWeaponForChar(r.characterKey);
       r.halfSkin = findAsset(skinsFor(r.characterKey, 'half'), isDefaultSkinFile);
       r.fullSkin = findAsset(skinsFor(r.characterKey, 'full'), isDefaultSkinFile);
       r.skin = r.variant === 'full' ? r.fullSkin : r.halfSkin;
       r.skinLabel = displaySkinTitle(r.characterKey, r.skin, r.variant);
       el('roleSkinLabel').value = r.skinLabel;
+      if (el('roleWeaponSelect')) {
+        el('roleWeaponSelect').innerHTML = weaponOptionsHtml(r.characterKey, r.weaponKey);
+      }
       syncRoleOverview();
+      if (state.mode === 'squad') {
+        renderSquadHead();
+      }
       if (skinPickerCtrl) {
         skinPickerCtrl.setFolderAndTitle(
           r.variant === 'full' ? FOLDERS.fullSkins : FOLDERS.halfSkins,
           `${characterDisplayName(r.characterKey)} 皮肤列表`
         );
-        pickerScrollMap.set('role:skin', 0);
+        pickerScrollMap.set(`${state.mode}:skin`, 0);
         skinPickerCtrl.rebuild(false);
       }
       renderPreview();
@@ -1491,13 +1911,20 @@
     inner.style.transform = `scale(${currentStageScale.toFixed(4)})`;
   }
 
-  function updateRoleArtInPlace() {
-    const skinImg = document.querySelector('#rolePlateCard .role-skin-img');
-    if (!skinImg) {
+  function getActiveRoleCardEl() {
+    if (state.mode === 'squad') {
+      return document.querySelector(`#previewGrid [data-squad-idx="${state.squad.selectedSlot}"]`);
+    }
+    return el('rolePlateCard');
+  }
+
+  function updateRoleArtInPlace(cardEl = getActiveRoleCardEl(), roleObj = activeRole()) {
+    const skinImg = cardEl ? cardEl.querySelector('.role-skin-img') : null;
+    if (!skinImg || !roleObj) {
       renderPreview();
       return;
     }
-    const m = computeRoleMetrics(state.role);
+    const m = computeRoleMetrics(roleObj);
     skinImg.style.left = `${m.artX.toFixed(2)}%`;
     skinImg.style.top = `${m.artY.toFixed(2)}%`;
     skinImg.style.width = `${m.artWidth.toFixed(2)}%`;
@@ -1514,61 +1941,79 @@
     return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
   }
 
-  function bindRoleCanvasGesture(cardEl) {
-    if (!cardEl) return;
+  function selectSquadSlotInPlace(squadIdx) {
+    if (squadIdx === null || squadIdx === undefined || state.mode !== 'squad') return;
+    if (state.squad.selectedSlot === squadIdx) return;
+    state.squad.selectedSlot = squadIdx;
+    document.querySelectorAll('#previewGrid [data-squad-idx]').forEach((node) => {
+      node.classList.toggle('is-squad-selected', Number(node.dataset.squadIdx) === squadIdx);
+    });
+    renderFavoritesDrawer();
+    renderSquadHead();
+    renderRoleEditor();
+    persist();
+  }
+
+  function bindRoleCanvasGesture(cardEl, roleObj, squadIdx = null) {
+    if (!cardEl || !roleObj) return;
     cardEl.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
       e.preventDefault();
-      const tf = currentArtTransform();
-      dragCtx = { startX: e.clientX, startY: e.clientY, origX: tf.x, origY: tf.y };
+      selectSquadSlotInPlace(squadIdx);
+      const tf = currentArtTransform(roleObj);
+      dragCtx = { startX: e.clientX, startY: e.clientY, origX: tf.x, origY: tf.y, cardEl, roleObj };
     });
     cardEl.addEventListener('wheel', (e) => {
       e.preventDefault();
-      const tf = currentArtTransform();
+      selectSquadSlotInPlace(squadIdx);
+      const tf = currentArtTransform(roleObj);
       const delta = e.deltaY < 0 ? 3 : -3;
       tf.scale = clamp(tf.scale + delta, 40, 160);
       syncArtSlidersDom(tf);
-      updateRoleArtInPlace();
+      updateRoleArtInPlace(cardEl, roleObj);
     }, { passive: false });
 
     cardEl.addEventListener('touchstart', (e) => {
-      if (state.mode !== 'role') return;
+      if (state.mode !== 'role' && state.mode !== 'squad') return;
+      selectSquadSlotInPlace(squadIdx);
       if (e.touches.length === 1) {
         const t = e.touches[0];
-        const tf = currentArtTransform();
+        const tf = currentArtTransform(roleObj);
         pinchCtx = null;
-        dragCtx = { startX: t.clientX, startY: t.clientY, origX: tf.x, origY: tf.y };
+        dragCtx = { startX: t.clientX, startY: t.clientY, origX: tf.x, origY: tf.y, cardEl, roleObj };
       } else if (e.touches.length >= 2) {
         e.preventDefault();
-        const tf = currentArtTransform();
+        const tf = currentArtTransform(roleObj);
         dragCtx = null;
         pinchCtx = {
           startDist: Math.max(20, touchDist(e.touches[0], e.touches[1])),
           origScale: tf.scale,
+          cardEl,
+          roleObj,
         };
       }
     }, { passive: false });
 
     cardEl.addEventListener('touchmove', (e) => {
-      if (state.mode !== 'role') return;
+      if (state.mode !== 'role' && state.mode !== 'squad') return;
       if (e.touches.length >= 2 && pinchCtx) {
         e.preventDefault();
         const dist = Math.max(20, touchDist(e.touches[0], e.touches[1]));
-        const tf = currentArtTransform();
+        const tf = currentArtTransform(pinchCtx.roleObj);
         tf.scale = Math.round(clamp(pinchCtx.origScale * (dist / pinchCtx.startDist), 40, 160));
         syncArtSlidersDom(tf);
-        updateRoleArtInPlace();
+        updateRoleArtInPlace(pinchCtx.cardEl, pinchCtx.roleObj);
       } else if (e.touches.length === 1 && dragCtx) {
         e.preventDefault();
         const t = e.touches[0];
         const sc = Math.max(0.2, currentStageScale);
-        const tf = currentArtTransform();
+        const tf = currentArtTransform(dragCtx.roleObj);
         const dxPct = ((t.clientX - dragCtx.startX) / (306 * sc)) * 100;
         const dyPct = ((t.clientY - dragCtx.startY) / (560 * sc)) * 100;
         tf.x = Math.round(clamp(dragCtx.origX + dxPct, -45, 45) * 2) / 2;
         tf.y = Math.round(clamp(dragCtx.origY + dyPct, -45, 45) * 2) / 2;
         syncArtSlidersDom(tf);
-        updateRoleArtInPlace();
+        updateRoleArtInPlace(dragCtx.cardEl, dragCtx.roleObj);
       }
     }, { passive: false });
 
@@ -1578,9 +2023,9 @@
         pinchCtx = null;
       } else if (e.touches.length === 1) {
         const t = e.touches[0];
-        const tf = currentArtTransform();
+        const tf = currentArtTransform(roleObj);
         pinchCtx = null;
-        dragCtx = { startX: t.clientX, startY: t.clientY, origX: tf.x, origY: tf.y };
+        dragCtx = { startX: t.clientX, startY: t.clientY, origX: tf.x, origY: tf.y, cardEl, roleObj };
       }
     };
     cardEl.addEventListener('touchend', endTouch);
@@ -1588,73 +2033,134 @@
   }
 
   window.addEventListener('mousemove', (e) => {
-    if (!dragCtx || state.mode !== 'role') return;
+    if (!dragCtx || (state.mode !== 'role' && state.mode !== 'squad')) return;
     const sc = Math.max(0.2, currentStageScale);
-    const tf = currentArtTransform();
+    const tf = currentArtTransform(dragCtx.roleObj);
     const dxPct = ((e.clientX - dragCtx.startX) / (306 * sc)) * 100;
     const dyPct = ((e.clientY - dragCtx.startY) / (560 * sc)) * 100;
     tf.x = Math.round(clamp(dragCtx.origX + dxPct, -45, 45) * 2) / 2;
     tf.y = Math.round(clamp(dragCtx.origY + dyPct, -45, 45) * 2) / 2;
     syncArtSlidersDom(tf);
-    updateRoleArtInPlace();
+    updateRoleArtInPlace(dragCtx.cardEl, dragCtx.roleObj);
   });
   window.addEventListener('mouseup', () => { dragCtx = null; });
+
+  function renderRoleCardArticleHtml(r, opts = {}) {
+    const { idAttr = '', extraClass = '', extraAttrs = '', extraStyle = '' } = opts;
+    const m = computeRoleMetrics(r);
+    const roleFont = resolveFontFamily(r.fontKey, r.customFont);
+    const skinFolder = r.variant === 'full' ? FOLDERS.fullSkins : FOLDERS.halfSkins;
+    const bgFitStyle = USE_EXTRACTED ? '' : 'object-fit:cover;';
+    const borderFitStyle = USE_EXTRACTED ? '' : 'object-fit:contain;';
+
+    const showAv = r.showAvatar !== false && Boolean(r.avatar);
+    const textRightX306 = 306 * (1 - m.textRight / 100);
+    const avRightX306 = showAv ? 306 * ((m.avatarX + m.avatarWidth / 2) / 100) + 8 : 306 * 0.13;
+    const maxRoleTextW = Math.max(76, textRightX306 - avRightX306);
+    const effSkinFs = measureFitFontPx(r.skinLabel, maxRoleTextW, r.skinFontSize, 10, 700, roleFont);
+    const effNameFs = measureFitFontPx(r.playerName, maxRoleTextW, r.nameFontSize, 11, 800, roleFont);
+
+    const wInfo = resolveWeaponInfo(r);
+    const cInfo = resolveCoreTraitInfo(r);
+    const sInfo = resolveSubTraitInfo(r);
+
+    const weaponBadgeHtml = wInfo?.file
+      ? `<span class="role-badge-weapon" title="${esc(wInfo.name)}"><img src="${assetPath(FOLDERS.weapons, wInfo.file)}" alt="${esc(wInfo.name)}"></span>`
+      : `<span class="role-badge-weapon">${WEAPON_ICON_SVG}</span>`;
+    const coreBadgeHtml = cInfo?.file
+      ? `<span class="role-badge-trait is-real-icon" title="${esc(cInfo.name)}"><img src="${assetPath(FOLDERS.traits, cInfo.file)}" alt="${esc(cInfo.name)}"></span>`
+      : `<span class="role-badge-trait ${esc(cInfo?.group || 'chaos')}"></span>`;
+    const subBadgeHtml = sInfo?.file
+      ? `<span class="role-badge-trait is-real-icon" title="${esc(sInfo.name)}"><img src="${assetPath(FOLDERS.traits, sInfo.file)}" alt="${esc(sInfo.name)}"></span>`
+      : `<span class="role-badge-trait ${esc(r.subTrait || 'chaos')}"></span>`;
+
+    return `<article class="role-plate-card${extraClass ? ` ${extraClass}` : ''}"${idAttr ? ` id="${idAttr}"` : ''}${extraStyle ? ` style="${extraStyle}"` : ''}${extraAttrs ? ` ${extraAttrs}` : ''}>
+      <div class="role-plate-inner${r.background ? '' : ' no-bg'}">
+        ${r.background ? `<img class="role-bg-img" style="${bgFitStyle}" src="${assetPath(FOLDERS.characterBackgrounds, r.background)}" alt="">` : ''}
+        ${r.skin ? `<div class="role-skin-clip"><img class="role-skin-img" style="left:${m.artX.toFixed(2)}%;top:${m.artY.toFixed(2)}%;width:${m.artWidth.toFixed(2)}%" src="${assetPath(skinFolder, r.skin)}" alt=""></div>` : ''}
+        ${!r.border ? '<div class="role-nameplate-bar"></div>' : ''}
+      </div>
+      ${r.showBadges ? `<div class="role-side-badges">${weaponBadgeHtml}${coreBadgeHtml}${subBadgeHtml}</div>` : ''}
+      ${r.border ? `<img class="role-border-img" style="${borderFitStyle}" src="${assetPath(FOLDERS.borders, r.border)}" alt="">` : ''}
+      ${showAv ? `<img class="role-player-avatar" style="left:${m.avatarX.toFixed(2)}%;top:${m.avatarY.toFixed(2)}%;width:${m.avatarWidth.toFixed(2)}%" src="${assetPath(FOLDERS.avatars, r.avatar)}" alt="">` : ''}
+      <div class="role-text-group" style="right:${m.textRight.toFixed(2)}%;top:${m.textY.toFixed(2)}%;max-width:${maxRoleTextW.toFixed(1)}px;font-family:${esc(roleFont)}">
+        <span class="role-skin-title" style="color:${esc(r.skinColor || '#78d9ff')};font-size:${effSkinFs}px">${esc(r.skinLabel)}</span>
+        <strong class="role-player-name" style="font-size:${effNameFs}px">${esc(r.playerName)}</strong>
+      </div>
+    </article>`;
+  }
 
   // ==================== 实时预览渲染 ====================
   function renderPreview() {
     const grid = el('previewGrid');
-    const isRole = state.mode === 'role';
-    grid.className = `preview-grid ${isRole ? 'is-role-mode' : 'is-team-mode'}`;
+    const modeClass = state.mode === 'role' ? 'is-role-mode' : state.mode === 'squad' ? 'is-squad-mode' : 'is-team-mode';
+    grid.className = `preview-grid ${modeClass}`;
 
-    if (isRole) {
+    if (state.mode === 'role') {
       const r = state.role;
-      const m = computeRoleMetrics(r);
-      const roleFont = resolveFontFamily(r.fontKey, r.customFont);
-      const skinFolder = r.variant === 'full' ? FOLDERS.fullSkins : FOLDERS.halfSkins;
-      const bgFitStyle = USE_EXTRACTED ? '' : 'object-fit:cover;';
-      const borderFitStyle = USE_EXTRACTED ? '' : 'object-fit:contain;';
-
       currentStageNatW = 306;
       currentStageNatH = 560;
       currentStageMaxScale = 1.08;
       currentStageScale = computeStageFit(currentStageNatW, currentStageNatH, currentStageMaxScale);
 
-      const showAv = r.showAvatar !== false && Boolean(r.avatar);
-      const textRightX306 = 306 * (1 - m.textRight / 100);
-      const avRightX306 = showAv ? 306 * ((m.avatarX + m.avatarWidth / 2) / 100) + 8 : 306 * 0.13;
-      const maxRoleTextW = Math.max(76, textRightX306 - avRightX306);
-      const effSkinFs = measureFitFontPx(r.skinLabel, maxRoleTextW, r.skinFontSize, 10, 700, roleFont);
-      const effNameFs = measureFitFontPx(r.playerName, maxRoleTextW, r.nameFontSize, 11, 800, roleFont);
-
       grid.innerHTML = `<div class="preview-scale-box" style="width:${(306 * currentStageScale).toFixed(1)}px;height:${(560 * currentStageScale).toFixed(1)}px">
         <div class="preview-scale-inner" style="width:306px;height:560px;transform:scale(${currentStageScale.toFixed(4)})">
-          <article class="role-plate-card" id="rolePlateCard">
-            <div class="role-plate-inner${r.background ? '' : ' no-bg'}">
-              ${r.background ? `<img class="role-bg-img" style="${bgFitStyle}" src="${assetPath(FOLDERS.characterBackgrounds, r.background)}" alt="">` : ''}
-              ${r.skin ? `<div class="role-skin-clip"><img class="role-skin-img" style="left:${m.artX.toFixed(2)}%;top:${m.artY.toFixed(2)}%;width:${m.artWidth.toFixed(2)}%" src="${assetPath(skinFolder, r.skin)}" alt=""></div>` : ''}
-              ${!r.border ? '<div class="role-nameplate-bar"></div>' : ''}
-            </div>
-            ${r.showBadges ? `<div class="role-side-badges">
-              <span class="role-badge-weapon">${WEAPON_ICON_SVG}</span>
-              <span class="role-badge-trait ${esc(r.primaryTrait)}"></span>
-              <span class="role-badge-trait ${esc(r.subTrait)}"></span>
-            </div>` : ''}
-            ${r.border ? `<img class="role-border-img" style="${borderFitStyle}" src="${assetPath(FOLDERS.borders, r.border)}" alt="">` : ''}
-            ${showAv ? `<img class="role-player-avatar" style="left:${m.avatarX.toFixed(2)}%;top:${m.avatarY.toFixed(2)}%;width:${m.avatarWidth.toFixed(2)}%" src="${assetPath(FOLDERS.avatars, r.avatar)}" alt="">` : ''}
-            <div class="role-text-group" style="right:${m.textRight.toFixed(2)}%;top:${m.textY.toFixed(2)}%;max-width:${maxRoleTextW.toFixed(1)}px;font-family:${esc(roleFont)}">
-              <span class="role-skin-title" style="color:${esc(r.skinColor || '#78d9ff')};font-size:${effSkinFs}px">${esc(r.skinLabel)}</span>
-              <strong class="role-player-name" style="font-size:${effNameFs}px">${esc(r.playerName)}</strong>
-            </div>
-          </article>
+          ${renderRoleCardArticleHtml(r, { idAttr: 'rolePlateCard' })}
         </div>
       </div>`;
 
-      bindRoleCanvasGesture(el('rolePlateCard'));
+      bindRoleCanvasGesture(el('rolePlateCard'), r, null);
       el('previewEyebrow').textContent = '单人角色加载界面';
       el('previewTitle').textContent = window.innerWidth <= 960
         ? '角色铭牌（单指拖立绘 · 双指缩放）'
         : '角色加载铭牌（可直接拖拽/滚轮缩放立绘）';
       el('slotSummary').textContent = r.variant === 'full' ? '全身模式' : '半身模式';
+    } else if (state.mode === 'squad') {
+      const sq = state.squad;
+      const activeEntries = sq.members
+        .map((member, idx) => ({ member, idx }))
+        .filter((it) => it.member.enabled !== false);
+      const count = Math.max(1, activeEntries.length);
+      const stepX = 306 + sq.cardGap;
+      const hasNum = Boolean(sq.squadNumber);
+      const topPad = hasNum ? 52 : 0;
+
+      currentStageNatW = Math.max(306, 306 + (count - 1) * stepX);
+      currentStageNatH = 560 + topPad;
+      currentStageMaxScale = 0.96;
+      currentStageScale = computeStageFit(currentStageNatW, currentStageNatH, currentStageMaxScale);
+
+      const cardsHtml = activeEntries
+        .map(({ member, idx }, renderIdx) => {
+          const isSel = sq.selectedSlot === idx;
+          const marginStyle = renderIdx > 0 ? `margin-left:${sq.cardGap}px;z-index:${renderIdx + 2};` : 'z-index:2;';
+          return renderRoleCardArticleHtml(member, {
+            extraClass: `is-squad-member${isSel ? ' is-squad-selected' : ''}`,
+            extraAttrs: `data-squad-idx="${idx}" title="点击选中队员 0${idx + 1}（可直接拖拽立绘）"`,
+            extraStyle: marginStyle,
+          });
+        })
+        .join('');
+
+      grid.innerHTML = `<div class="preview-scale-box" style="width:${(currentStageNatW * currentStageScale).toFixed(1)}px;height:${(currentStageNatH * currentStageScale).toFixed(1)}px">
+        <div class="preview-scale-inner" style="width:${currentStageNatW}px;height:${currentStageNatH}px;transform:scale(${currentStageScale.toFixed(4)})">
+          <div class="squad-stage-wrap">
+            ${hasNum ? `<div class="squad-num-watermark${sq.highlightMySquad ? ' is-my-squad' : ''}">${esc(sq.squadNumber)}</div>` : ''}
+            <div class="squad-cards-row">${cardsHtml}</div>
+          </div>
+        </div>
+      </div>`;
+
+      activeEntries.forEach(({ member, idx }) => {
+        const cardNode = grid.querySelector(`[data-squad-idx="${idx}"]`);
+        bindRoleCanvasGesture(cardNode, member, idx);
+      });
+
+      el('previewEyebrow').textContent = '三人小队加载界面 · 连排预览';
+      el('previewTitle').textContent = window.innerWidth <= 960
+        ? '加载连排（点卡片切号位 · 直接拖立绘）'
+        : '三人加载界面连排（点击任意卡片切换号位 · 直接拖拽立绘）';
+      el('slotSummary').textContent = `${count} / 3 人连排`;
     } else {
       const teamFont = resolveFontFamily(state.teamFontKey, state.teamCustomFont);
       const indexedSlots = state.teamSlots
@@ -1712,12 +2218,27 @@
   }
 
   function renderControls() {
-    const isRole = state.mode === 'role';
-    el('rolePanel').hidden = !isRole;
-    el('teamPanel').hidden = isRole;
+    const isRoleLike = state.mode === 'role' || state.mode === 'squad';
+    el('rolePanel').hidden = !isRoleLike;
+    el('teamPanel').hidden = isRoleLike;
     document.querySelectorAll('.mode-tab').forEach((b) => b.classList.toggle('active', b.dataset.mode === state.mode));
-    if (isRole) renderRoleEditor();
-    else renderTeamEditor();
+
+    if (isRoleLike) {
+      if (el('rolePanelKicker')) {
+        el('rolePanelKicker').textContent = state.mode === 'squad' ? '三人加载界面连排' : '加载界面铭牌';
+      }
+      if (el('rolePanelHeading')) {
+        el('rolePanelHeading').textContent = state.mode === 'squad' ? '小队连排铭牌搭配' : '角色铭牌搭配';
+      }
+      if (el('rolePanelModeBadge')) {
+        el('rolePanelModeBadge').textContent = state.mode === 'squad' ? '3人连排' : '单人';
+      }
+      renderFavoritesDrawer();
+      renderSquadHead();
+      renderRoleEditor();
+    } else {
+      renderTeamEditor();
+    }
     const total = Object.values(ASSET).reduce((acc, arr) => acc + arr.length, 0);
     el('assetCount').textContent = `${total.toLocaleString()} 项素材${USE_EXTRACTED ? ' · 原名索引' : ' · 旧库'}`;
   }
@@ -1881,6 +2402,158 @@
     ctx.restore();
   }
 
+  async function renderSingleRoleCardCanvas(r, SCALE = 2) {
+    const W = 306 * SCALE;
+    const H = 560 * SCALE;
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const ctx = c.getContext('2d');
+
+    const m = computeRoleMetrics(r);
+    const roleFont = resolveFontFamily(r.fontKey, r.customFont);
+    const skinFolder = r.variant === 'full' ? FOLDERS.fullSkins : FOLDERS.halfSkins;
+    const showAv = r.showAvatar !== false && Boolean(r.avatar);
+    const wInfo = r.showBadges ? resolveWeaponInfo(r) : null;
+    const cInfo = r.showBadges ? resolveCoreTraitInfo(r) : null;
+    const sInfo = r.showBadges ? resolveSubTraitInfo(r) : null;
+
+    const [bg, skin, avatar, border, weaponImg, coreImg, subImg] = await Promise.all([
+      loadImg(assetPath(FOLDERS.characterBackgrounds, r.background)),
+      loadImg(assetPath(skinFolder, r.skin)),
+      showAv ? loadImg(assetPath(FOLDERS.avatars, r.avatar)) : Promise.resolve(null),
+      loadImg(assetPath(FOLDERS.borders, r.border)),
+      wInfo?.file ? loadImg(assetPath(FOLDERS.weapons, wInfo.file)) : Promise.resolve(null),
+      cInfo?.file ? loadImg(assetPath(FOLDERS.traits, cInfo.file)) : Promise.resolve(null),
+      sInfo?.file ? loadImg(assetPath(FOLDERS.traits, sInfo.file)) : Promise.resolve(null),
+    ]);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(W * 0.1036, H * 0.1094);
+    ctx.lineTo(W * 0.9179, H * 0.0039);
+    ctx.lineTo(W * 0.9179, H * 0.8594);
+    ctx.lineTo(W * 0.1036, H * 0.9648);
+    ctx.closePath();
+    ctx.clip();
+
+    if (bg) {
+      if (USE_EXTRACTED) ctx.drawImage(bg, 0, 0, W, H);
+      else drawCover(ctx, bg, 0, 0, W, H);
+    } else {
+      ctx.fillStyle = '#141920';
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    if (skin) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, W, H * 0.78);
+      ctx.clip();
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+      ctx.shadowBlur = 12 * SCALE;
+      ctx.shadowOffsetY = 6 * SCALE;
+      const targetW = W * (m.artWidth / 100);
+      const targetH = targetW * (skin.naturalHeight / skin.naturalWidth);
+      const cx = W * (m.artX / 100);
+      const cy = H * (m.artY / 100);
+      ctx.drawImage(skin, cx - targetW / 2, cy - targetH / 2, targetW, targetH);
+      ctx.restore();
+    }
+
+    if (!border) {
+      const barH = H * 0.303;
+      const barY = H - barH;
+      const grad = ctx.createLinearGradient(0, barY, 0, H);
+      grad.addColorStop(0, 'rgba(14,18,23,0.94)');
+      grad.addColorStop(1, 'rgba(8,10,14,0.98)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, barY, W, barH);
+    }
+    ctx.restore();
+
+    if (r.showBadges) {
+      const bx = W * 0.142 + 13 * SCALE;
+      const by = H * 0.138;
+      if (weaponImg) {
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.92)';
+        ctx.shadowBlur = 3 * SCALE;
+        ctx.shadowOffsetY = 1 * SCALE;
+        drawContain(ctx, weaponImg, bx - 9 * SCALE, by + 2 * SCALE, 18 * SCALE, 18 * SCALE);
+        ctx.restore();
+      } else {
+        drawCrossedSwordsIcon(ctx, bx, by + 11 * SCALE, 15 * SCALE);
+      }
+      if (coreImg) {
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.82)';
+        ctx.shadowBlur = 5 * SCALE;
+        ctx.shadowOffsetY = 2 * SCALE;
+        drawContain(ctx, coreImg, bx - 13 * SCALE, by + 28 * SCALE, 26 * SCALE, 26 * SCALE);
+        ctx.restore();
+      } else {
+        drawTraitCircle(ctx, bx, by + 41 * SCALE, 12.5 * SCALE, cInfo?.group || 'chaos');
+      }
+      if (subImg) {
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.82)';
+        ctx.shadowBlur = 5 * SCALE;
+        ctx.shadowOffsetY = 2 * SCALE;
+        drawContain(ctx, subImg, bx - 13 * SCALE, by + 60 * SCALE, 26 * SCALE, 26 * SCALE);
+        ctx.restore();
+      } else {
+        drawTraitCircle(ctx, bx, by + 73 * SCALE, 12.5 * SCALE, r.subTrait || 'chaos');
+      }
+    }
+
+    if (border) {
+      if (USE_EXTRACTED) ctx.drawImage(border, 0, 0, W, H);
+      else drawContain(ctx, border, 0, 0, W, H);
+    }
+
+    if (avatar && showAv) {
+      const avSize = W * (m.avatarWidth / 100);
+      const avX = W * (m.avatarX / 100) - avSize / 2;
+      const avY = H * (m.avatarY / 100) - avSize / 2;
+      ctx.fillStyle = '#0f1318';
+      ctx.fillRect(avX, avY, avSize, avSize);
+      drawCover(ctx, avatar, avX, avY, avSize, avSize);
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(avX + 1, avY + 1, avSize - 2, avSize - 2);
+    }
+
+    const textRightX = W * (1 - m.textRight / 100);
+    const avRightEdge = showAv ? W * ((m.avatarX + m.avatarWidth / 2) / 100) + 8 * SCALE : W * 0.13;
+    const maxRoleTextW = Math.max(76 * SCALE, textRightX - avRightEdge);
+    const centerY = H * (m.textY / 100);
+    const skinPx = measureFitFontPx(r.skinLabel, maxRoleTextW, r.skinFontSize * SCALE, 10 * SCALE, 700, roleFont);
+    const namePx = measureFitFontPx(r.playerName, maxRoleTextW, r.nameFontSize * SCALE, 11 * SCALE, 800, roleFont);
+    // 严格按 CSS 行高盒模型 (1.25 + 3px margin + 1.2) 计算双行文字中心 Y，与实时预览 0 像素误差
+    const skinLineH = skinPx * 1.25;
+    const nameLineH = namePx * 1.2;
+    const lineGap = 3 * SCALE;
+    const totalTextH = skinLineH + lineGap + nameLineH;
+    const blockTop = centerY - totalTextH / 2;
+
+    ctx.save();
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.95)';
+    ctx.shadowBlur = 8;
+    ctx.font = `700 ${skinPx}px ${roleFont}`;
+    ctx.fillStyle = r.skinColor || '#78d9ff';
+    ctx.fillText(r.skinLabel || '', textRightX, blockTop + skinLineH / 2);
+
+    ctx.font = `800 ${namePx}px ${roleFont}`;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(r.playerName || '', textRightX, blockTop + skinLineH + lineGap + nameLineH / 2);
+    ctx.restore();
+
+    return c;
+  }
+
   async function buildExportCanvas() {
     // 最多等待字体 600ms，防止国内网络访问 Google Fonts 缓慢时卡死导出按钮
     if (document.fonts && document.fonts.ready) {
@@ -1890,123 +2563,57 @@
       ]);
     }
 
+    if (state.mode === 'role') {
+      return renderSingleRoleCardCanvas(state.role, 2);
+    }
+
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
 
-    if (state.mode === 'role') {
-      const SCALE = 2;
-      const W = 306 * SCALE;
-      const H = 560 * SCALE;
-      canvas.width = W;
-      canvas.height = H;
-
-      const r = state.role;
-      const m = computeRoleMetrics(r);
-      const roleFont = resolveFontFamily(r.fontKey, r.customFont);
-      const skinFolder = r.variant === 'full' ? FOLDERS.fullSkins : FOLDERS.halfSkins;
-      const showAv = r.showAvatar !== false && Boolean(r.avatar);
-      const [bg, skin, avatar, border] = await Promise.all([
-        loadImg(assetPath(FOLDERS.characterBackgrounds, r.background)),
-        loadImg(assetPath(skinFolder, r.skin)),
-        showAv ? loadImg(assetPath(FOLDERS.avatars, r.avatar)) : Promise.resolve(null),
-        loadImg(assetPath(FOLDERS.borders, r.border)),
-      ]);
-
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(W * 0.1036, H * 0.1094);
-      ctx.lineTo(W * 0.9179, H * 0.0039);
-      ctx.lineTo(W * 0.9179, H * 0.8594);
-      ctx.lineTo(W * 0.1036, H * 0.9648);
-      ctx.closePath();
-      ctx.clip();
-
-      if (bg) {
-        if (USE_EXTRACTED) ctx.drawImage(bg, 0, 0, W, H);
-        else drawCover(ctx, bg, 0, 0, W, H);
-      } else {
-        ctx.fillStyle = '#141920';
-        ctx.fillRect(0, 0, W, H);
+    if (state.mode === 'squad') {
+      const sq = state.squad;
+      const activeMembers = sq.members.filter((m) => m.enabled !== false);
+      if (!activeMembers.length) {
+        showToast('请至少启用 1 名加载连排队员');
+        return null;
       }
+      const SCALE = 2;
+      const hasNum = Boolean(sq.squadNumber);
+      const topPad = hasNum ? 52 * SCALE : 0;
+      const stepX = (306 + sq.cardGap) * SCALE;
+      canvas.width = Math.max(306 * SCALE, 306 * SCALE + (activeMembers.length - 1) * stepX);
+      canvas.height = 560 * SCALE + topPad;
 
-      if (skin) {
+      if (hasNum) {
         ctx.save();
-        ctx.beginPath();
-        ctx.rect(0, 0, W, H * 0.78);
-        ctx.clip();
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
-        ctx.shadowBlur = 12 * SCALE;
-        ctx.shadowOffsetY = 6 * SCALE;
-        const targetW = W * (m.artWidth / 100);
-        const targetH = targetW * (skin.naturalHeight / skin.naturalWidth);
-        const cx = W * (m.artX / 100);
-        const cy = H * (m.artY / 100);
-        ctx.drawImage(skin, cx - targetW / 2, cy - targetH / 2, targetW, targetH);
+        ctx.font = `900 ${68 * SCALE}px "Orbitron", "Bahnschrift", "Impact", "Segoe UI", sans-serif`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        if (sq.highlightMySquad) {
+          ctx.fillStyle = '#46b5d1';
+          ctx.shadowColor = 'rgba(70, 181, 209, 0.32)';
+          ctx.shadowBlur = 14 * SCALE;
+          ctx.shadowOffsetY = 3 * SCALE;
+        } else {
+          ctx.fillStyle = 'rgba(100, 116, 139, 0.42)';
+        }
+        ctx.fillText(sq.squadNumber, 28 * SCALE, 2 * SCALE);
         ctx.restore();
       }
 
-      if (!border) {
-        const barH = H * 0.303;
-        const barY = H - barH;
-        const grad = ctx.createLinearGradient(0, barY, 0, H);
-        grad.addColorStop(0, 'rgba(14,18,23,0.94)');
-        grad.addColorStop(1, 'rgba(8,10,14,0.98)');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, barY, W, barH);
-      }
-      ctx.restore();
-
-      if (r.showBadges) {
-        const bx = W * 0.142 + 12 * SCALE;
-        const by = H * 0.138;
-        drawCrossedSwordsIcon(ctx, bx, by + 10 * SCALE, 14 * SCALE);
-        drawTraitCircle(ctx, bx, by + 38 * SCALE, 12 * SCALE, r.primaryTrait);
-        drawTraitCircle(ctx, bx, by + 68 * SCALE, 12 * SCALE, r.subTrait);
-      }
-
-      if (border) {
-        if (USE_EXTRACTED) ctx.drawImage(border, 0, 0, W, H);
-        else drawContain(ctx, border, 0, 0, W, H);
-      }
-
-      if (avatar && showAv) {
-        const avSize = W * (m.avatarWidth / 100);
-        const avX = W * (m.avatarX / 100) - avSize / 2;
-        const avY = H * (m.avatarY / 100) - avSize / 2;
-        ctx.fillStyle = '#0f1318';
-        ctx.fillRect(avX, avY, avSize, avSize);
-        drawCover(ctx, avatar, avX, avY, avSize, avSize);
-        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(avX + 1, avY + 1, avSize - 2, avSize - 2);
-      }
-
-      const textRightX = W * (1 - m.textRight / 100);
-      const avRightEdge = showAv ? W * ((m.avatarX + m.avatarWidth / 2) / 100) + 8 * SCALE : W * 0.13;
-      const maxRoleTextW = Math.max(76 * SCALE, textRightX - avRightEdge);
-      const centerY = H * (m.textY / 100);
-      const skinPx = measureFitFontPx(r.skinLabel, maxRoleTextW, r.skinFontSize * SCALE, 10 * SCALE, 700, roleFont);
-      const namePx = measureFitFontPx(r.playerName, maxRoleTextW, r.nameFontSize * SCALE, 11 * SCALE, 800, roleFont);
-      // 严格按 CSS 行高盒模型 (1.25 + 3px margin + 1.2) 计算双行文字中心 Y，与实时预览 0 像素误差
-      const skinLineH = skinPx * 1.25;
-      const nameLineH = namePx * 1.2;
-      const lineGap = 3 * SCALE;
-      const totalTextH = skinLineH + lineGap + nameLineH;
-      const blockTop = centerY - totalTextH / 2;
-
-      ctx.save();
-      ctx.textAlign = 'right';
-      ctx.textBaseline = 'middle';
-      ctx.shadowColor = 'rgba(0,0,0,0.95)';
-      ctx.shadowBlur = 8;
-      ctx.font = `700 ${skinPx}px ${roleFont}`;
-      ctx.fillStyle = r.skinColor || '#78d9ff';
-      ctx.fillText(r.skinLabel || '', textRightX, blockTop + skinLineH / 2);
-
-      ctx.font = `800 ${namePx}px ${roleFont}`;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(r.playerName || '', textRightX, blockTop + skinLineH + lineGap + nameLineH / 2);
-      ctx.restore();
+      const cardCanvases = await Promise.all(activeMembers.map((member) => renderSingleRoleCardCanvas(member, SCALE)));
+      cardCanvases.forEach((cardCanvas, idx) => {
+        ctx.save();
+        if (idx > 0 && sq.cardGap < 0) {
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.42)';
+          ctx.shadowBlur = 16 * SCALE;
+          ctx.shadowOffsetX = -4 * SCALE;
+          ctx.shadowOffsetY = 6 * SCALE;
+        }
+        ctx.drawImage(cardCanvas, idx * stepX, topPad);
+        ctx.restore();
+      });
+      return canvas;
     } else {
       const slots = state.teamSlots.filter((s) => s.enabled);
       if (!slots.length) { showToast('请至少启用 1 个队伍槽位'); return null; }
@@ -2151,7 +2758,8 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.style.display = 'none';
-      a.download = `卢米亚铭牌工坊-${state.mode === 'role' ? '角色铭牌' : '队伍大厅'}.png`;
+      const modeName = state.mode === 'role' ? '角色铭牌' : state.mode === 'squad' ? '三人加载连排' : '队伍大厅';
+      a.download = `卢米亚铭牌工坊-${modeName}.png`;
       a.href = url;
       document.body.appendChild(a);
       a.click();
@@ -2522,13 +3130,16 @@
       });
 
       // 底部细节参数条
-      const tf = currentArtTransform();
+      const tf = currentArtTransform(r);
       const tfMoved = tf.x !== 0 || tf.y !== 0 || tf.scale !== 100;
       const tfDesc = tfMoved
         ? `缩放 ${tf.scale}% · X ${fmtSigned(tf.x)} · Y ${fmtSigned(tf.y)}`
         : '默认校准原点';
+      const wInfo = resolveWeaponInfo(r);
+      const cInfo = resolveCoreTraitInfo(r);
+      const sInfo = resolveSubTraitInfo(r);
       const badgeDesc = r.showBadges
-        ? `${TRAIT_LABELS[r.primaryTrait] || '破坏红'} + ${TRAIT_LABELS[r.subTrait] || '混沌紫'}`
+        ? `${wInfo?.name || '默认武器'} · ${cInfo?.name || '核心'} + ${sInfo?.name || '副系'}`
         : '隐藏';
 
       ctx.save();
@@ -2542,7 +3153,7 @@
 
       drawFitSingleLine(
         ctx,
-        `潜能图标：${badgeDesc}   ｜   立绘坐标：${tfDesc}   ｜   字号：昵称 ${r.nameFontSize}px · 头衔 ${r.skinFontSize}px`,
+        `武器与潜能：${badgeDesc}   ｜   立绘坐标：${tfDesc}   ｜   字号：${r.nameFontSize}/${r.skinFontSize}px`,
         rx + 18,
         700,
         rw - 36,
@@ -2575,6 +3186,146 @@
       ctx.font = `700 15px ${uiFont}`;
       ctx.fillStyle = pal.accent;
       ctx.fillText('er-plate.pages.dev', rx + rw, 788);
+      ctx.restore();
+    } else if (state.mode === 'squad') {
+      // 三人加载界面连排搭配分享图
+      const sq = state.squad;
+      const members = sq.members.filter((m) => m.enabled !== false);
+      const W = 1440;
+      const H = 1120;
+      canvas.width = W;
+      canvas.height = H;
+
+      const bgGrad = ctx.createLinearGradient(0, 0, W, H);
+      bgGrad.addColorStop(0, pal.bgTop);
+      bgGrad.addColorStop(1, pal.bgBot);
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      const radGlow = ctx.createRadialGradient(W / 2, 380, 40, W / 2, 380, 540);
+      radGlow.addColorStop(0, pal.glow);
+      radGlow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = radGlow;
+      ctx.fillRect(0, 0, W, 720);
+
+      const padX = 52;
+      const contentW = W - padX * 2;
+
+      ctx.save();
+      roundRectPath(ctx, padX, 40, 256, 30, 8);
+      ctx.fillStyle = pal.pillFill;
+      ctx.fill();
+      ctx.font = `800 13.5px ${uiFont}`;
+      ctx.fillStyle = pal.pillText;
+      ctx.textBaseline = 'middle';
+      ctx.fillText('永恒轮回 · 三人加载连排搭配单', padX + 14, 55);
+      ctx.restore();
+
+      const sqTitle = sq.squadNumber ? `小队 #${sq.squadNumber} · ${members.length} 人加载界面铭牌连排` : `${members.length} 人加载界面铭牌连排搭配清单`;
+      drawFitSingleLine(ctx, sqTitle, padX, 98, contentW * 0.68, 28, 20, 800, uiFont, pal.title);
+      drawFitSingleLine(ctx, `紧凑连排间距：${sq.cardGap}px`, W - padX, 98, contentW * 0.3, 15.5, 12.5, 600, uiFont, pal.sub, 'right');
+
+      ctx.save();
+      roundRectPath(ctx, padX, 128, contentW, 560, 20);
+      ctx.fillStyle = pal.stageFill;
+      ctx.fill();
+      ctx.strokeStyle = pal.stageStroke;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      ctx.shadowColor = cardTheme === 'dark' ? 'rgba(0,0,0,0.62)' : 'rgba(15,23,42,0.22)';
+      ctx.shadowBlur = 28;
+      ctx.shadowOffsetY = 10;
+      drawContain(ctx, plateCanvas, padX + 24, 144, contentW - 48, 528);
+      ctx.restore();
+
+      const gap = 18;
+      const rawCardW = (contentW - gap * (members.length - 1)) / members.length;
+      const cardW = Math.min(440, rawCardW);
+      const totalW = cardW * members.length + gap * (members.length - 1);
+      const startX = (W - totalW) / 2;
+      const cardY = 710;
+      const cardH = 336;
+
+      const memberThumbs = await Promise.all(
+        members.map((m) =>
+          Promise.all([
+            loadImg(assetPath(FOLDERS.characterPortraits, m.character)),
+            loadImg(assetPath(FOLDERS.borders, m.border)),
+            loadImg(assetPath(FOLDERS.characterBackgrounds, m.background)),
+            loadImg(assetPath(FOLDERS.avatars, m.avatar)),
+          ])
+        )
+      );
+
+      members.forEach((m, idx) => {
+        const cx = startX + idx * (cardW + gap);
+        const [charImg, bdImg, bgImg, avImg] = memberThumbs[idx];
+        const cZh = characterDisplayName(m.characterKey) || '实验体';
+        const sPure = isDefaultSkinFile(m.skin) ? '原皮' : cleanDisplayLabel(m.skin, 'skin') || cZh;
+        const wInf = resolveWeaponInfo(m);
+        const cInf = resolveCoreTraitInfo(m);
+        const sInf = resolveSubTraitInfo(m);
+
+        ctx.save();
+        roundRectPath(ctx, cx, cardY, cardW, cardH, 16);
+        ctx.fillStyle = pal.cardFill;
+        ctx.fill();
+        ctx.strokeStyle = pal.cardStroke;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.save();
+        roundRectPath(ctx, cx + 16, cardY + 14, 68, 25, 6);
+        ctx.fillStyle = pal.pillFill;
+        ctx.fill();
+        ctx.font = `800 12px ${uiFont}`;
+        ctx.fillStyle = pal.pillText;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`队员 0${idx + 1}`, cx + 25, cardY + 26.5);
+        ctx.restore();
+
+        drawFitSingleLine(ctx, `${m.playerName || '玩家'} · ${cZh}`, cx + 92, cardY + 26.5, cardW - 108, 17, 13, 800, uiFont, pal.title);
+
+        const rows = [
+          { tag: '皮肤', val: `${cZh} — ${sPure}`, img: charImg, fit: 'cover' },
+          { tag: '边框', val: prettyItemName(m.border, '默认无边框'), img: bdImg, fit: 'border' },
+          { tag: '背景', val: prettyItemName(m.background, '默认底板'), img: bgImg, fit: 'cover' },
+          { tag: '头像', val: m.showAvatar === false ? '已隐藏' : prettyItemName(m.avatar, '未选择'), img: avImg, fit: 'cover' },
+        ];
+        rows.forEach((rwItem, rIdx) => {
+          const ry = cardY + 52 + rIdx * 60;
+          drawClippedThumb(ctx, rwItem.img, cx + 16, ry, 48, 48, 8, rwItem.fit, pal.thumbBack, pal.thumbStroke);
+          ctx.save();
+          ctx.font = `800 11.5px ${uiFont}`;
+          ctx.fillStyle = pal.accent;
+          ctx.textBaseline = 'middle';
+          ctx.fillText(rwItem.tag, cx + 74, ry + 14);
+          ctx.restore();
+          drawFitSingleLine(ctx, rwItem.val, cx + 74, ry + 34, cardW - 90, 14.5, 11.5, 700, uiFont, pal.title);
+        });
+
+        const badgeLine = m.showBadges
+          ? `武器：${wInf?.name || '—'}  ｜  潜能：${cInf?.name || '—'} + ${sInf?.name || '—'}`
+          : '左上角武器与潜能图标：已隐藏';
+        drawFitSingleLine(ctx, badgeLine, cx + 16, cardY + 312, cardW - 32, 12, 10.5, 600, uiFont, pal.dim);
+      });
+
+      ctx.save();
+      ctx.font = `800 16px ${uiFont}`;
+      ctx.fillStyle = pal.title;
+      ctx.textBaseline = 'middle';
+      ctx.fillText('卢米亚铭牌工坊', padX, 1082);
+      ctx.font = `600 14px ${uiFont}`;
+      ctx.fillStyle = pal.dim;
+      ctx.fillText('· 永恒轮回铭牌与大厅搭配工具', padX + 122, 1082);
+      ctx.textAlign = 'right';
+      ctx.font = `700 15px ${uiFont}`;
+      ctx.fillStyle = pal.accent;
+      ctx.fillText('er-plate.pages.dev', W - padX, 1082);
       ctx.restore();
     } else {
       // 队伍大厅搭配分享图
@@ -2879,9 +3630,16 @@
     });
   });
 
+  if (el('favDrawerBtn')) {
+    el('favDrawerBtn').addEventListener('click', () => {
+      favDrawerOpen = !favDrawerOpen;
+      renderFavoritesDrawer();
+    });
+  }
+
   if (el('randomRoleBtn')) {
     el('randomRoleBtn').addEventListener('click', () => {
-      const r = state.role;
+      const r = activeRole();
       const skinPool = skinsFor(r.characterKey, r.variant);
       const nextSkin = pickRandom(skinPool) || r.skin;
       r.skin = nextSkin;
@@ -2890,6 +3648,11 @@
       r.border = pickRandom(ASSET.borders) || r.border;
       r.background = pickRandom(ASSET.characterBackgrounds) || r.background;
       r.avatar = pickRandom(ASSET.avatars) || r.avatar;
+      if (CORE_TRAITS.length) {
+        const rndCore = pickRandom(CORE_TRAITS);
+        if (rndCore) r.coreTrait = rndCore.key;
+      }
+      if (state.mode === 'squad') renderSquadHead();
       renderRoleEditor();
       renderPreview();
       showToast(`已为「${characterDisplayName(r.characterKey)}」随机搭配一套新铭牌灵感`);
@@ -2911,6 +3674,7 @@
 
   el('resetButton').addEventListener('click', () => {
     if (state.mode === 'role') state.role = makeRoleConfig();
+    else if (state.mode === 'squad') state.squad = makeDefaultSquad();
     else state.teamSlots = [makeTeamSlot(true, 0), makeTeamSlot(true, 1), makeTeamSlot(true, 2), makeTeamSlot(false, 3)];
     renderControls();
     renderPreview();
@@ -2953,9 +3717,13 @@
       const dlUrl = URL.createObjectURL(currentShareBlob);
       const a = document.createElement('a');
       a.style.display = 'none';
-      const suffix = shareModalIsRaw
-        ? (state.mode === 'role' ? '角色铭牌' : '队伍大厅')
-        : (state.mode === 'role' ? `${characterDisplayName(state.role.characterKey) || '角色'}搭配单` : '队伍大厅搭配单');
+      const rawName = state.mode === 'role' ? '角色铭牌' : state.mode === 'squad' ? '三人加载连排' : '队伍大厅';
+      const shareName = state.mode === 'role'
+        ? `${characterDisplayName(state.role.characterKey) || '角色'}搭配单`
+        : state.mode === 'squad'
+          ? '三人加载连排搭配单'
+          : '队伍大厅搭配单';
+      const suffix = shareModalIsRaw ? rawName : shareName;
       a.download = `卢米亚铭牌工坊-${suffix}.png`;
       a.href = dlUrl;
       document.body.appendChild(a);
@@ -2993,7 +3761,8 @@
     }
     if (e.target.matches('input, select')) return;
     if (e.key === '1') { state.mode = 'role'; renderControls(); renderPreview(); }
-    if (e.key === '2') { state.mode = 'team'; renderControls(); renderPreview(); }
+    if (e.key === '2') { state.mode = 'squad'; renderControls(); renderPreview(); }
+    if (e.key === '3') { state.mode = 'team'; renderControls(); renderPreview(); }
   });
 
   // ==================== 更新日志弹窗 & 免手动清缓存自动热刷新机制 ====================

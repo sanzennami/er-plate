@@ -483,29 +483,99 @@ button, input, select { font: inherit; color: inherit; touch-action: manipulatio
   pointer-events: none;
 }
 .role-badge-weapon {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   display: grid;
   place-items: center;
   color: rgba(255, 255, 255, 0.94);
   filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.92));
 }
-.role-badge-weapon svg {
-  width: 14px;
-  height: 14px;
+.role-badge-weapon svg,
+.role-badge-weapon img {
+  width: 18px;
+  height: 18px;
   display: block;
+  object-fit: contain;
 }
 .role-badge-trait {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   border: 1.5px solid rgba(255, 255, 255, 0.45);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.75);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.role-badge-trait.is-real-icon {
+  border: 0;
+  background: transparent !important;
+  box-shadow: none;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.82));
+  overflow: visible;
+}
+.role-badge-trait img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
 }
 .role-badge-trait.havoc { background: radial-gradient(circle, #ef4444 25%, #450a0a 90%); }
 .role-badge-trait.chaos { background: radial-gradient(circle, #c084fc 25%, #3b0764 90%); }
 .role-badge-trait.fort { background: radial-gradient(circle, #38bdf8 25%, #082f49 90%); }
 .role-badge-trait.support { background: radial-gradient(circle, #4ade80 25%, #052e16 90%); }
+
+/* ==================== 模式 2：三人加载界面铭牌连排 ==================== */
+.squad-stage-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+.squad-num-watermark {
+  position: absolute;
+  left: 28px;
+  top: 0;
+  font-family: "Orbitron", "Bahnschrift", "Impact", "Segoe UI", sans-serif;
+  font-size: 68px;
+  font-weight: 900;
+  line-height: 0.9;
+  letter-spacing: -0.02em;
+  color: rgba(100, 116, 139, 0.34);
+  user-select: none;
+  pointer-events: none;
+  z-index: 1;
+}
+[data-theme="dark"] .squad-num-watermark,
+.preview-area[data-stage-bg="dark"] .squad-num-watermark {
+  color: rgba(148, 163, 184, 0.22);
+}
+.squad-num-watermark.is-my-squad {
+  color: #46b5d1 !important;
+  text-shadow: 0 4px 18px rgba(70, 181, 209, 0.28);
+}
+.squad-cards-row {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 560px;
+  display: flex;
+  align-items: center;
+  z-index: 2;
+}
+.role-plate-card.is-squad-member {
+  flex-shrink: 0;
+  transition: filter 0.16s ease;
+}
+.role-plate-card.is-squad-selected::after {
+  content: "";
+  position: absolute;
+  inset: 52px 24px 18px 30px;
+  border: 2px dashed var(--teal);
+  border-radius: 6px;
+  pointer-events: none;
+  z-index: 12;
+  opacity: 0.85;
+}
 
 /* ==================== 模式 2：队伍大厅（前端几何去阴影黑缝 + S10 CNJ 实机框对齐） ==================== */
 .team-slots-row {
@@ -661,6 +731,207 @@ kbd {
   align-items: center;
   gap: 6px;
 }
+.fav-toggle-btn {
+  height: 26px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #f59e0b;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: 0.15s ease;
+}
+[data-theme="dark"] .fav-toggle-btn {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.55);
+}
+.fav-toggle-btn:hover,
+.fav-toggle-btn.active {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #ffffff;
+}
+[data-theme="dark"] .fav-toggle-btn:hover,
+[data-theme="dark"] .fav-toggle-btn.active {
+  color: #1c1302;
+}
+.fav-toggle-btn span {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.12);
+  font-size: 10px;
+}
+
+/* 我的铭牌收藏夹抽屉 */
+.favorites-drawer {
+  margin-bottom: 12px;
+  padding: 11px 12px;
+  border: 1px solid rgba(245, 158, 11, 0.38);
+  border-radius: 11px;
+  background: var(--panel);
+  box-shadow: var(--card-shadow);
+  display: grid;
+  gap: 9px;
+}
+.favorites-drawer[hidden] { display: none; }
+.fav-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.fav-drawer-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text);
+}
+.fav-save-btn {
+  height: 27px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: 0.15s ease;
+}
+.fav-save-btn:hover { filter: brightness(1.06); }
+.fav-list {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.fav-empty {
+  padding: 14px 8px;
+  text-align: center;
+  color: var(--dim);
+  font-size: 11.5px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+}
+.fav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-raised);
+}
+.fav-item-thumbs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.fav-item-thumbs img {
+  width: 32px;
+  height: 32px;
+  border-radius: 5px;
+  object-fit: cover;
+  background: var(--thumb-well);
+}
+.fav-item-thumbs img.is-border {
+  object-fit: contain;
+}
+.fav-item-info {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.fav-item-name {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fav-item-sub {
+  font-size: 10px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fav-item-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.fav-act-btn {
+  height: 24px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: 0.14s ease;
+}
+.fav-act-btn.primary {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+  color: var(--teal);
+}
+.fav-act-btn.primary:hover {
+  background: var(--teal);
+  color: #ffffff;
+}
+[data-theme="dark"] .fav-act-btn.primary:hover { color: #051614; }
+.fav-act-btn.danger:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* 三人连排顶部控制卡 */
+.squad-head-card {
+  margin-bottom: 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--panel);
+  box-shadow: var(--card-shadow);
+  display: grid;
+  gap: 9px;
+}
+.squad-head-card .slot-tabs {
+  grid-template-columns: repeat(3, 1fr);
+  margin-bottom: 0;
+}
+.squad-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.squad-num-select {
+  width: auto !important;
+  min-width: 104px;
+  height: 30px !important;
+  font-size: 11.5px !important;
+  font-weight: 700;
+}
+.squad-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
 .inspire-button {
   height: 26px;
   padding: 0 10px;
@@ -867,6 +1138,29 @@ input:focus, select:focus {
 }
 
 /* 修复潜能下拉框文字被裁切问题：预留充足内边距与自适应宽度 */
+.badge-config-box {
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-soft);
+  display: grid;
+  gap: 8px;
+}
+.badge-select-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.badge-select-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.badge-select-field > span {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+}
 .trait-select-group {
   display: inline-flex;
   align-items: center;
@@ -1099,19 +1393,25 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .asset-grid {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   grid-auto-rows: max-content;
   gap: 7px;
-  max-height: 224px;
+  max-height: 272px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 3px 4px 3px 2px;
 }
-.picker[data-picker-kind="skin"] .asset-grid,
 .picker[data-picker-kind="border"] .asset-grid,
 .picker[data-picker-kind="roleBackground"] .asset-grid,
 .picker[data-picker-kind="background"] .asset-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  max-height: 336px;
+}
+.picker[data-picker-kind="skin"] .asset-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-height: 296px;
 }
 
 .asset-option {
@@ -1649,9 +1949,14 @@ input[type="range"]::-moz-range-thumb {
     overscroll-behavior: contain;
   }
   .asset-grid {
-    max-height: 206px;
+    max-height: 248px;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
+  }
+  .picker[data-picker-kind="border"] .asset-grid,
+  .picker[data-picker-kind="roleBackground"] .asset-grid,
+  .picker[data-picker-kind="background"] .asset-grid {
+    max-height: 276px;
   }
 
   /* 防止 iOS Safari 点击输入框自动放大页面 */
@@ -1704,6 +2009,18 @@ input[type="range"]::-moz-range-thumb {
 @media (max-width: 560px) {
   .version-extra {
     display: none;
+  }
+  .mode-tabs {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .mode-tab {
+    justify-content: center;
+    padding: 0 6px;
+  }
+  .badge-select-grid {
+    grid-template-columns: 1fr;
   }
   .btn-lbl-full {
     display: none;
