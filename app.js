@@ -1,8 +1,18 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.1.5';
+  const APP_VERSION = '1.1.6';
   const FALLBACK_CHANGELOG = [
+    {
+      version: '1.1.6',
+      date: '2026-11-25',
+      items: [
+        '界面视觉全面焕新：毛玻璃顶栏、现代胶囊拨杆开关、定制圆环滑块、暗色渐变缩略图底槽与选中项右上角「✓」角标',
+        '新增「当前已选装扮速览条」：实时展示实验体/皮肤、边框、背景、头像缩略图与名称，点击任一卡片即可平滑定位至对应素材区',
+        '素材库新增「电竞战队 / 排位冠军 / 联动限定 / 兔女郎女仆 / 周年节日」一键分类筛选胶囊与「◎ 定位已选」快捷按钮',
+        '预览区新增「默认 / 暗场 / 纯白 / 透明格」4 种舞台底衬独立切换，头衔名新增 6 枚实机常用预设色点，并上线「✦ 随机搭配」灵感按钮',
+      ],
+    },
     {
       version: '1.1.5',
       date: '2026-11-25',
@@ -605,8 +615,56 @@
   const collapsedPickers = new Set();
   const pickerScrollMap = new Map();
   const pickerSearchMap = new Map();
+  const pickerFilterMap = new Map();
   const panelScrollEl = document.querySelector('.panel-scroll');
   let outerScrollLockUntil = 0;
+
+  const SKIN_COLOR_SWATCHES = [
+    { color: '#78d9ff', title: '实机冰蓝（默认）' },
+    { color: '#fbbf24', title: '传说耀金' },
+    { color: '#f472b6', title: '春樱柔粉' },
+    { color: '#c084fc', title: '混沌魅紫' },
+    { color: '#4ade80', title: '翡冷翠绿' },
+    { color: '#ffffff', title: '纯净亮白' },
+  ];
+
+  const RE_ESPORTS = /(S\d+\s*[・·]|CNJ|ROX|SEJONG|CYBERS|AutoArms|Sparkle|Incheon|INCHEON|Slasher|Innate|BeSPA|Phalanx|Guardians|Ascenders|Whales|MIR|WAVE|BUSAN|ESPORTS|FearX|Shadow|GEN\.G|ERCC|KEL)/i;
+  const RE_RANK = /(赛季|排位|永恒|半神|无瑕|星陨|灭钻|修罗|金魄|银烙|铜魂|铁阎|泰坦|CHAMPION|WINNER|冠军|挑战赛)/i;
+  const RE_COLLAB = /(P5R|GGST|JOKER|VIOLET|CROW|QUEEN|PANTHER|婕克|艾尔菲尔特)/i;
+
+  const PICKER_FILTERS = {
+    border: [
+      { key: 'all', label: '全部', fn: () => true },
+      { key: 'esports', label: '电竞战队', fn: (f, z) => RE_ESPORTS.test(z) || RE_ESPORTS.test(f) },
+      { key: 'rank', label: '排位/冠军', fn: (f, z) => RE_RANK.test(z) || RE_RANK.test(f) },
+      { key: 'collab', label: '联动限定', fn: (f, z) => RE_COLLAB.test(z) || RE_COLLAB.test(f) },
+      { key: 'theme', label: '兔女郎/女仆/夏', fn: (_, z) => /(兔女郎|女仆|执事|萌仆|夏日|海滨|仲夏|清凉|热带|碧波|踏浪|海色)/.test(z) },
+      { key: 'fest', label: '周年/花语', fn: (_, z) => /(周年|圣诞|新年|青龙|情人|中秋|樱|花|蝶|春)/.test(z) },
+    ],
+    roleBackground: [
+      { key: 'all', label: '全部', fn: () => true },
+      { key: 'esports', label: '电竞战队', fn: (f, z) => RE_ESPORTS.test(z) || RE_ESPORTS.test(f) },
+      { key: 'rank', label: '排位荣誉', fn: (f, z) => RE_RANK.test(z) || RE_RANK.test(f) },
+      { key: 'collab', label: '联动限定', fn: (f, z) => RE_COLLAB.test(z) || RE_COLLAB.test(f) },
+      { key: 'theme', label: '兔女郎/女仆/夏', fn: (_, z) => /(兔女郎|女仆|执事|萌仆|夏日|海滨|仲夏|清凉|热带|碧波|踏浪|海色)/.test(z) },
+      { key: 'fest', label: '周年/节日', fn: (_, z) => /(周年|圣诞|新年|青龙|情人|中秋|烟花|花|蝶)/.test(z) },
+    ],
+    avatar: [
+      { key: 'all', label: '全部', fn: () => true },
+      { key: 'hero', label: '实验体头像', fn: (f, z) => /_1020\d\d\./i.test(f) || (/头像$/.test(z) && !RE_ESPORTS.test(z)) },
+      { key: 'emote', label: '表情/徽章', fn: (f, z) => !RE_ESPORTS.test(z) && !RE_RANK.test(z) && !RE_COLLAB.test(z) && !/_1020\d\d\./i.test(f) },
+      { key: 'esports', label: '电竞战队', fn: (f, z) => RE_ESPORTS.test(z) || RE_ESPORTS.test(f) },
+      { key: 'rank', label: '排位/冠军', fn: (f, z) => RE_RANK.test(z) || RE_RANK.test(f) },
+      { key: 'collab', label: '联动限定', fn: (f, z) => RE_COLLAB.test(z) || RE_COLLAB.test(f) },
+    ],
+    background: [
+      { key: 'all', label: '全部', fn: () => true },
+      { key: 'esports', label: '电竞战队', fn: (f, z) => RE_ESPORTS.test(z) || RE_ESPORTS.test(f) },
+      { key: 'char', label: '角色/皮肤', fn: (f, z) => !RE_ESPORTS.test(z) && !RE_COLLAB.test(z) && !/(周年|圣诞|新年|中秋|青龙|合作伙伴|WeGame|默认)/.test(z) },
+      { key: 'fest', label: '周年/纪念', fn: (_, z) => /(周年|圣诞|新年|中秋|青龙|合作伙伴|WeGame|雪花|红叶)/.test(z) },
+      { key: 'collab', label: '联动限定', fn: (f, z) => RE_COLLAB.test(z) || RE_COLLAB.test(f) },
+    ],
+  };
 
   if (panelScrollEl) {
     panelScrollEl.addEventListener('wheel', (e) => {
@@ -634,15 +692,25 @@
     const pickerKey = `${state.mode}:${kind}`;
     const isCollapsed = collapsedPickers.has(pickerKey);
     const savedQuery = pickerSearchMap.get(pickerKey) || '';
+    const activeCat = pickerFilterMap.get(pickerKey) || 'all';
+    const filters = PICKER_FILTERS[kind] || null;
+    const filterHtml = filters
+      ? `<div class="picker-filter-bar">${filters
+          .map((flt) => `<button type="button" class="picker-filter-chip${activeCat === flt.key ? ' active' : ''}" data-filter-key="${flt.key}">${esc(flt.label)}</button>`)
+          .join('')}</div>`
+      : '';
+
     return `<div class="field picker${isCollapsed ? ' is-collapsed' : ''}" data-picker-kind="${kind}" data-folder="${folder}">
       <div class="picker-head">
         <span class="field-label">${title}</span>
         <span class="picker-head-right">
           <span class="picker-count"></span>
+          <button type="button" class="picker-locate-btn" title="在列表中滚动定位到当前已选素材">◎ 定位</button>
           <button type="button" class="picker-collapse-btn">${isCollapsed ? '展开' : '收起'}</button>
         </span>
       </div>
       <input class="picker-search" type="search" value="${esc(savedQuery)}" placeholder="搜索${searchHint}…">
+      ${filterHtml}
       <div class="asset-grid"></div>
     </div>`;
   }
@@ -654,12 +722,22 @@
     const input = box.querySelector('.picker-search');
     const grid = box.querySelector('.asset-grid');
     const countEl = box.querySelector('.picker-count');
+    const locateBtn = box.querySelector('.picker-locate-btn');
     const collapseBtn = box.querySelector('.picker-collapse-btn');
+    const filterChips = box.querySelectorAll('[data-filter-key]');
     const pickerKey = `${state.mode}:${kind}`;
     const BATCH = 120;
 
     let currentList = [];
     let renderedCount = 0;
+
+    const expandIfCollapsed = () => {
+      if (box.classList.contains('is-collapsed')) {
+        box.classList.remove('is-collapsed');
+        collapsedPickers.delete(pickerKey);
+        if (collapseBtn) collapseBtn.textContent = '收起';
+      }
+    };
 
     if (collapseBtn) {
       collapseBtn.addEventListener('click', () => {
@@ -721,17 +799,23 @@
       const options = typeof getOptions === 'function' ? getOptions() : getOptions;
       const q = (input.value || '').trim().toLowerCase();
       pickerSearchMap.set(pickerKey, input.value || '');
+      const activeCat = pickerFilterMap.get(pickerKey) || 'all';
+      const catDef = (PICKER_FILTERS[kind] || []).find((c) => c.key === activeCat);
       const sel = getSelected();
 
       currentList = options.filter((f) => {
+        const zh = rawZhLabel(f);
+        if (catDef && catDef.key !== 'all' && !catDef.fn(f, zh)) return false;
         if (!q) return true;
-        return f.toLowerCase().includes(q) || rawZhLabel(f).toLowerCase().includes(q);
+        return f.toLowerCase().includes(q) || zh.toLowerCase().includes(q);
       });
-      countEl.textContent = `${options.length} 项`;
+      countEl.textContent = currentList.length === options.length
+        ? `${options.length} 项`
+        : `${currentList.length}/${options.length} 项`;
       renderedCount = 0;
 
       if (!currentList.length) {
-        grid.innerHTML = '<div class="asset-empty">无匹配素材</div>';
+        grid.innerHTML = '<div class="asset-empty">当前筛选下无匹配素材</div>';
         return;
       }
 
@@ -747,6 +831,49 @@
       }
     };
 
+    const locateSelected = (scrollPanel = false) => {
+      expandIfCollapsed();
+      const sel = getSelected();
+      if (sel && currentList.indexOf(sel) === -1) {
+        input.value = '';
+        pickerSearchMap.set(pickerKey, '');
+        pickerFilterMap.set(pickerKey, 'all');
+        filterChips.forEach((ch) => ch.classList.toggle('active', ch.dataset.filterKey === 'all'));
+        rebuild(false);
+      }
+      const selIdx = sel ? currentList.indexOf(sel) : -1;
+      if (selIdx >= renderedCount) {
+        appendMore(selIdx + 24);
+      }
+      if (scrollPanel && panelScrollEl) {
+        box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        box.classList.remove('flash-focus');
+        void box.offsetWidth;
+        box.classList.add('flash-focus');
+      }
+      requestAnimationFrame(() => {
+        const selNode = grid.querySelector('.asset-option.selected');
+        if (selNode) {
+          grid.scrollTop = Math.max(0, selNode.offsetTop - grid.clientHeight / 2 + selNode.offsetHeight / 2);
+          pickerScrollMap.set(pickerKey, grid.scrollTop);
+        }
+      });
+    };
+
+    if (locateBtn) {
+      locateBtn.addEventListener('click', () => locateSelected(false));
+    }
+
+    filterChips.forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const key = chip.dataset.filterKey || 'all';
+        pickerFilterMap.set(pickerKey, key);
+        filterChips.forEach((c) => c.classList.toggle('active', c.dataset.filterKey === key));
+        pickerScrollMap.set(pickerKey, 0);
+        rebuild(false);
+      });
+    });
+
     input.addEventListener('input', () => {
       pickerScrollMap.set(pickerKey, 0);
       rebuild(false);
@@ -756,6 +883,7 @@
 
     return {
       rebuild,
+      locateSelected,
       setFolderAndTitle(newFolder, newTitle) {
         if (newFolder) box.dataset.folder = newFolder;
         if (newTitle && titleEl) titleEl.textContent = newTitle;
@@ -786,7 +914,11 @@
           <label for="roleSkinLabel">皮肤/头衔名（自定义文本）</label>
           <div style="display:flex;gap:5px">
             <input id="roleSkinLabel" type="text" maxlength="36" value="${esc(r.skinLabel)}">
-            <input id="roleSkinColor" type="color" value="${esc(r.skinColor || '#78d9ff')}" title="皮肤名颜色">
+            <input id="roleSkinColor" type="color" value="${esc(r.skinColor || '#78d9ff')}" title="自定义头衔颜色">
+          </div>
+          <div class="color-swatch-row">
+            <span class="color-swatch-label">快捷色：</span>
+            ${SKIN_COLOR_SWATCHES.map((sw) => `<button type="button" class="color-swatch-dot${(r.skinColor || '#78d9ff').toLowerCase() === sw.color ? ' active' : ''}" data-swatch="${sw.color}" style="background:${sw.color}" title="${esc(sw.title)}"></button>`).join('')}
           </div>
         </div>
       </div>
@@ -845,6 +977,37 @@
         </div>
       </div>
 
+      <div class="loadout-overview" id="roleOverviewBar" aria-label="当前已选装扮速览（点击定位）">
+        <button type="button" class="overview-chip" data-jump-kind="skin" title="点击跳转到皮肤列表">
+          <img id="ovCharImg" src="${assetPath(FOLDERS.characterPortraits, r.character)}" alt="">
+          <span class="overview-chip-meta">
+            <span class="overview-chip-tag">实验体 · 皮肤</span>
+            <span class="overview-chip-name" id="ovSkinText"></span>
+          </span>
+        </button>
+        <button type="button" class="overview-chip" data-jump-kind="border" title="点击跳转到铭牌边框">
+          <img id="ovBorderImg" class="is-contain" src="${assetPath(FOLDERS.borders, r.border)}" alt="">
+          <span class="overview-chip-meta">
+            <span class="overview-chip-tag">铭牌边框</span>
+            <span class="overview-chip-name" id="ovBorderText"></span>
+          </span>
+        </button>
+        <button type="button" class="overview-chip" data-jump-kind="roleBackground" title="点击跳转到人物背景板">
+          <img id="ovBgImg" class="is-contain" src="${assetPath(FOLDERS.characterBackgrounds, r.background)}" alt="">
+          <span class="overview-chip-meta">
+            <span class="overview-chip-tag">人物背景板</span>
+            <span class="overview-chip-name" id="ovBgText"></span>
+          </span>
+        </button>
+        <button type="button" class="overview-chip" data-jump-kind="avatar" title="点击跳转到左下玩家头像">
+          <img id="ovAvImg" src="${assetPath(FOLDERS.avatars, r.avatar)}" alt="">
+          <span class="overview-chip-meta">
+            <span class="overview-chip-tag">左下玩家头像</span>
+            <span class="overview-chip-name" id="ovAvText"></span>
+          </span>
+        </button>
+      </div>
+
       ${pickerHtml('1. 选择实验体', '实验体中文/英文名', 'character', FOLDERS.characterPortraits)}
 
       <div class="field">
@@ -863,9 +1026,42 @@
     const posDetails = el('rolePosDetails');
     if (posDetails) posDetails.addEventListener('toggle', () => { rolePosOpen = posDetails.open; });
 
+    const syncSwatchDots = () => {
+      const cur = (r.skinColor || '#78d9ff').toLowerCase();
+      box.querySelectorAll('[data-swatch]').forEach((d) => {
+        d.classList.toggle('active', d.dataset.swatch === cur);
+      });
+    };
+
+    const syncRoleOverview = () => {
+      const charZh = characterDisplayName(r.characterKey) || '实验体';
+      const skinShort = isDefaultSkinFile(r.skin) ? '原皮' : cleanDisplayLabel(r.skin, 'skin');
+      if (el('ovCharImg')) el('ovCharImg').src = assetPath(FOLDERS.characterPortraits, r.character);
+      if (el('ovSkinText')) el('ovSkinText').textContent = `${charZh} · ${skinShort}`;
+      if (el('ovBorderImg')) el('ovBorderImg').src = assetPath(FOLDERS.borders, r.border);
+      if (el('ovBorderText')) el('ovBorderText').textContent = cleanDisplayLabel(r.border, 'border') || '未选';
+      if (el('ovBgImg')) el('ovBgImg').src = assetPath(FOLDERS.characterBackgrounds, r.background);
+      if (el('ovBgText')) el('ovBgText').textContent = cleanDisplayLabel(r.background, 'roleBackground') || '未选';
+      if (el('ovAvImg')) el('ovAvImg').src = assetPath(FOLDERS.avatars, r.avatar);
+      if (el('ovAvText')) el('ovAvText').textContent = cleanDisplayLabel(r.avatar, 'avatar') || '未选';
+    };
+    syncRoleOverview();
+
     el('rolePlayerName').addEventListener('input', (e) => { r.playerName = e.target.value; renderPreview(); });
     el('roleSkinLabel').addEventListener('input', (e) => { r.skinLabel = e.target.value; renderPreview(); });
-    el('roleSkinColor').addEventListener('input', (e) => { r.skinColor = e.target.value; renderPreview(); });
+    el('roleSkinColor').addEventListener('input', (e) => {
+      r.skinColor = e.target.value;
+      syncSwatchDots();
+      renderPreview();
+    });
+    box.querySelectorAll('[data-swatch]').forEach((dot) => {
+      dot.addEventListener('click', () => {
+        r.skinColor = dot.dataset.swatch;
+        el('roleSkinColor').value = r.skinColor;
+        syncSwatchDots();
+        renderPreview();
+      });
+    });
     el('roleShowBadges').addEventListener('change', (e) => { r.showBadges = e.target.checked; renderPreview(); });
     el('roleShowAvatar').addEventListener('change', (e) => { r.showAvatar = e.target.checked; renderPreview(); });
     el('rolePrimaryTrait').addEventListener('change', (e) => { r.primaryTrait = e.target.value; renderPreview(); });
@@ -996,6 +1192,7 @@
         r[r.variant === 'full' ? 'fullSkin' : 'halfSkin'] = file;
         r.skinLabel = displaySkinTitle(r.characterKey, file, r.variant);
         el('roleSkinLabel').value = r.skinLabel;
+        syncRoleOverview();
         renderPreview();
       }
     );
@@ -1014,6 +1211,7 @@
           el('roleSkinLabel').value = r.skinLabel;
         }
         syncSliderInputs();
+        syncRoleOverview();
         if (skinPickerCtrl) {
           skinPickerCtrl.setFolderAndTitle(
             r.variant === 'full' ? FOLDERS.fullSkins : FOLDERS.halfSkins,
@@ -1026,7 +1224,7 @@
       })
     );
 
-    mountPicker(box, 'character', basePortraits, () => r.character, (file) => {
+    const charPickerCtrl = mountPicker(box, 'character', basePortraits, () => r.character, (file) => {
       r.character = file;
       r.characterKey = characterForPortrait(file);
       r.halfSkin = findAsset(skinsFor(r.characterKey, 'half'), isDefaultSkinFile);
@@ -1034,6 +1232,7 @@
       r.skin = r.variant === 'full' ? r.fullSkin : r.halfSkin;
       r.skinLabel = displaySkinTitle(r.characterKey, r.skin, r.variant);
       el('roleSkinLabel').value = r.skinLabel;
+      syncRoleOverview();
       if (skinPickerCtrl) {
         skinPickerCtrl.setFolderAndTitle(
           r.variant === 'full' ? FOLDERS.fullSkins : FOLDERS.halfSkins,
@@ -1045,9 +1244,35 @@
       renderPreview();
     });
 
-    mountPicker(box, 'border', ASSET.borders, () => r.border, (file) => { r.border = file; renderPreview(); });
-    mountPicker(box, 'roleBackground', ASSET.characterBackgrounds, () => r.background, (file) => { r.background = file; renderPreview(); });
-    mountPicker(box, 'avatar', ASSET.avatars, () => r.avatar, (file) => { r.avatar = file; renderPreview(); });
+    const borderPickerCtrl = mountPicker(box, 'border', ASSET.borders, () => r.border, (file) => {
+      r.border = file;
+      syncRoleOverview();
+      renderPreview();
+    });
+    const bgPickerCtrl = mountPicker(box, 'roleBackground', ASSET.characterBackgrounds, () => r.background, (file) => {
+      r.background = file;
+      syncRoleOverview();
+      renderPreview();
+    });
+    const avPickerCtrl = mountPicker(box, 'avatar', ASSET.avatars, () => r.avatar, (file) => {
+      r.avatar = file;
+      syncRoleOverview();
+      renderPreview();
+    });
+
+    const ctrlMap = {
+      character: charPickerCtrl,
+      skin: skinPickerCtrl,
+      border: borderPickerCtrl,
+      roleBackground: bgPickerCtrl,
+      avatar: avPickerCtrl,
+    };
+    box.querySelectorAll('[data-jump-kind]').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const target = ctrlMap[chip.dataset.jumpKind];
+        if (target?.locateSelected) target.locateSelected(true);
+      });
+    });
 
     if (panelScrollEl && prevPanelScroll > 0) {
       panelScrollEl.scrollTop = prevPanelScroll;
@@ -2642,6 +2867,48 @@
     localStorage.setItem(THEME_KEY, state.theme);
     syncThemeBtn();
   });
+  const pickRandom = (arr) => (arr && arr.length ? arr[Math.floor(Math.random() * arr.length)] : '');
+
+  document.querySelectorAll('[data-stage-bg]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const mode = btn.dataset.stageBg || 'auto';
+      if (el('previewArea')) el('previewArea').dataset.stageBg = mode;
+      document.querySelectorAll('[data-stage-bg]').forEach((b) => {
+        b.classList.toggle('active', b.dataset.stageBg === mode);
+      });
+    });
+  });
+
+  if (el('randomRoleBtn')) {
+    el('randomRoleBtn').addEventListener('click', () => {
+      const r = state.role;
+      const skinPool = skinsFor(r.characterKey, r.variant);
+      const nextSkin = pickRandom(skinPool) || r.skin;
+      r.skin = nextSkin;
+      r[r.variant === 'full' ? 'fullSkin' : 'halfSkin'] = nextSkin;
+      r.skinLabel = displaySkinTitle(r.characterKey, nextSkin, r.variant);
+      r.border = pickRandom(ASSET.borders) || r.border;
+      r.background = pickRandom(ASSET.characterBackgrounds) || r.background;
+      r.avatar = pickRandom(ASSET.avatars) || r.avatar;
+      renderRoleEditor();
+      renderPreview();
+      showToast(`已为「${characterDisplayName(r.characterKey)}」随机搭配一套新铭牌灵感`);
+    });
+  }
+
+  if (el('randomTeamBtn')) {
+    el('randomTeamBtn').addEventListener('click', () => {
+      const slot = state.teamSlots[state.selectedTeamSlot];
+      if (!slot) return;
+      slot.enabled = true;
+      slot.background = pickRandom(ASSET.teamBackgrounds) || slot.background;
+      slot.avatar = pickRandom(ASSET.avatars) || slot.avatar;
+      renderTeamEditor();
+      renderPreview();
+      showToast(`已为号位 0${state.selectedTeamSlot + 1} 随机抽取背景与头像`);
+    });
+  }
+
   el('resetButton').addEventListener('click', () => {
     if (state.mode === 'role') state.role = makeRoleConfig();
     else state.teamSlots = [makeTeamSlot(true, 0), makeTeamSlot(true, 1), makeTeamSlot(true, 2), makeTeamSlot(false, 3)];

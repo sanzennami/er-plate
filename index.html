@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Sans+SC:wght@500;700;900&family=Noto+Serif+SC:wght@600;700;900&family=Orbitron:wght@700;800&family=ZCOOL+KuaiLe&family=ZCOOL+XiaoWei&display=swap" media="print" onload="this.media='all'">
-  <link rel="stylesheet" href="styles.css?v=1.1.5">
+  <link rel="stylesheet" href="styles.css?v=1.1.6">
 </head>
 <body data-theme="light">
   <header class="topbar">
@@ -22,7 +22,7 @@
         <p>永恒轮回 · 角色铭牌与大厅搭配</p>
       </div>
       <button class="version-button" id="changelogButton" type="button" title="查看版本更新日志">
-        <span id="versionLabel">v1.1.5</span>
+        <span id="versionLabel">v1.1.6</span>
         <span class="version-extra">· 更新日志</span>
       </button>
     </div>
@@ -45,13 +45,19 @@
   </header>
 
   <main class="workspace" id="workspaceMain">
-    <section class="preview-area">
+    <section class="preview-area" id="previewArea" data-stage-bg="auto">
       <div class="preview-head">
         <div class="preview-head-titles">
           <span class="eyebrow" id="previewEyebrow">单人角色加载界面</span>
           <h2 id="previewTitle">角色加载铭牌</h2>
         </div>
         <div class="preview-head-right">
+          <div class="stage-bg-pills" role="group" aria-label="预览舞台底衬" title="仅切换左侧预览舞台底色，方便检查浅色/深色发光边框与透明边缘">
+            <button type="button" class="stage-bg-btn active" data-stage-bg="auto">默认</button>
+            <button type="button" class="stage-bg-btn" data-stage-bg="dark">暗场</button>
+            <button type="button" class="stage-bg-btn" data-stage-bg="light">纯白</button>
+            <button type="button" class="stage-bg-btn" data-stage-bg="checker">透明格</button>
+          </div>
           <div class="preview-meta">
             <span class="live-dot"></span>
             <span class="preview-status-text" id="previewStatus">1:1 实机比例预览</span>
@@ -84,7 +90,10 @@
               <span class="section-kicker">加载界面铭牌</span>
               <h3>角色铭牌搭配</h3>
             </div>
-            <span class="section-count">单人</span>
+            <div class="section-heading-actions">
+              <button class="inspire-button" id="randomRoleBtn" type="button" title="围绕当前实验体随机搭配一套皮肤、边框、背景与头像">✦ 随机搭配</button>
+              <span class="section-count">单人</span>
+            </div>
           </div>
           <div id="roleEditor"></div>
         </section>
@@ -96,7 +105,10 @@
               <span class="section-kicker">组队准备界面</span>
               <h3>队伍大厅配置</h3>
             </div>
-            <span class="section-count" id="teamCount">03/04</span>
+            <div class="section-heading-actions">
+              <button class="inspire-button" id="randomTeamBtn" type="button" title="为当前选中的队友槽位随机抽取一套背景与头像">✦ 随机本槽</button>
+              <span class="section-count" id="teamCount">03/04</span>
+            </div>
           </div>
           <div class="slot-tabs" id="teamSlotTabs"></div>
           <div id="teamEditor"></div>
@@ -147,7 +159,7 @@
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="extracted_assets/assets.js?v=1.1.5"></script>
-  <script src="app.js?v=1.1.5"></script>
+  <script src="extracted_assets/assets.js?v=1.1.6"></script>
+  <script src="app.js?v=1.1.6"></script>
 </body>
 </html>
