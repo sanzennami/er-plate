@@ -1,8 +1,16 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.2.0';
+  const APP_VERSION = '1.2.1';
   const FALLBACK_CHANGELOG = [
+    {
+      version: '1.2.1',
+      date: '2026-11-28',
+      items: [
+        "增量解包新增装扮：铭牌边框 +1 款、人物背景板 +1 张、队伍大厅背景 +1 张、玩家头像 +4 枚（含「弥莎边框」「弥莎背景」「弥莎队伍格背景」「弥莎 惨了~」等）",
+        "同步最新官方简中本地化词典，补全/校准 1 项素材中文译名",
+      ],
+    },
     {
       version: '1.2.0',
       date: '2026-11-25',
